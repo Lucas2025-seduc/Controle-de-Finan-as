@@ -3,13 +3,54 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <!-- Adicionado Meta Description para SEO e Auditoria -->
-    <meta name="description" content="Nexus - Gerador de Certificados em Lote. Ferramenta profissional para criar, personalizar e imprimir certificados acadêmicos e corporativos com segurança.">
-    <!-- Adicionado Theme Color -->
-    <meta name="theme-color" content="#020617">
     
-    <!-- Manifesto Web App Embutido (Data URI) para corrigir erro de 'Missing Name/Description' -->
-    <link rel="manifest" href='data:application/manifest+json,{"name":"Nexus Certificados","short_name":"Nexus","description":"Gerador profissional de certificados em lote com validação de segurança.","start_url":".","display":"standalone","background_color":"#020617","theme_color":"#020617","icons":[]}'>
+    <!-- PWA: Metadados Básicos -->
+    <meta name="description" content="Nexus - Gerador de Certificados em Lote. Ferramenta profissional para criar, personalizar e imprimir certificados acadêmicos e corporativos com segurança.">
+    <meta name="theme-color" content="#020617">
+    <meta name="mobile-web-app-capable" content="yes">
+    
+    <!-- PWA: Suporte iOS -->
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="Nexus">
+    <!-- Ícone iOS (Data URI SVG) -->
+    <link rel="apple-touch-icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 512 512' style='background:%23020617'%3E%3Crect width='100%25' height='100%25' fill='%23020617'/%3E%3Cpath d='M256 48C141.1 48 48 141.1 48 256s93.1 208 208 208 208-93.1 208-208S370.9 48 256 48zm0 376c-92.7 0-168-75.3-168-168S163.3 88 256 88s168 75.3 168 168-75.3 168-168 168zm-20-228h40v120h-40z' fill='%233b82f6'/%3E%3C/svg%3E">
+
+    <!-- PWA: Manifesto Web Embutido (Data URI com Ícones) -->
+    <link rel="manifest" id="manifest-placeholder">
+    <script>
+        // Gera o manifesto dinamicamente para incluir ícones SVG sem arquivos externos
+        const iconSVG = `data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 512 512' style='background:%23020617'%3E%3Crect width='100%25' height='100%25' fill='%23020617'/%3E%3Cpath d='M256 48C141.1 48 48 141.1 48 256s93.1 208 208 208 208-93.1 208-208S370.9 48 256 48zm0 376c-92.7 0-168-75.3-168-168S163.3 88 256 88s168 75.3 168 168-75.3 168-168 168zm-20-228h40v120h-40z' fill='%233b82f6'/%3E%3C/svg%3E`;
+        
+        const manifest = {
+            "name": "Nexus - Gerador de Certificados",
+            "short_name": "Nexus",
+            "description": "Gerador profissional de certificados em lote com validação de segurança.",
+            "start_url": ".",
+            "display": "standalone",
+            "orientation": "landscape",
+            "background_color": "#020617",
+            "theme_color": "#020617",
+            "icons": [
+                {
+                    "src": iconSVG,
+                    "sizes": "192x192",
+                    "type": "image/svg+xml",
+                    "purpose": "any maskable"
+                },
+                {
+                    "src": iconSVG,
+                    "sizes": "512x512",
+                    "type": "image/svg+xml",
+                    "purpose": "any maskable"
+                }
+            ]
+        };
+        const stringManifest = JSON.stringify(manifest);
+        const blob = new Blob([stringManifest], {type: 'application/json'});
+        const manifestURL = URL.createObjectURL(blob);
+        document.querySelector('#manifest-placeholder').setAttribute('href', manifestURL);
+    </script>
 
     <title>NEXUS - GERADOR DE CERTIFICADOS EM LOTE</title>
     <script src="https://cdn.tailwindcss.com"></script>
@@ -1562,6 +1603,19 @@
             target.style.transform = `scale(${scale})`;
             
             resizeCanvas();
+        }
+
+        // --- REGISTO SERVICE WORKER (Para instalação e offline) ---
+        if ('serviceWorker' in navigator) {
+            window.addEventListener('load', () => {
+                // Tenta registar o Service Worker para suporte PWA/Offline
+                // Nota: O arquivo 'sw.js' deve estar no servidor para funcionar plenamente
+                navigator.serviceWorker.register('sw.js').then(registration => {
+                    console.log('ServiceWorker registado com sucesso: ', registration.scope);
+                }, err => {
+                    console.log('Registo do ServiceWorker falhou (esperado se não houver sw.js): ', err);
+                });
+            });
         }
 
         window.onload = () => {
