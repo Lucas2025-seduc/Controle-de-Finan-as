@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
     
-    <!-- PWA Meta Tags (Obrigatório para Lighthouse) -->
+    <!-- PWA Meta Tags -->
     <title>Nexus Finanças</title>
     <meta name="description" content="Controle financeiro inteligente, seguro e offline. Gerencie suas finanças pessoais com facilidade.">
     <meta name="theme-color" content="#0f172a">
@@ -21,6 +21,9 @@
 
     <!-- Biblioteca para Gerar PDF Real -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
+    
+    <!-- Biblioteca para Gráficos -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 
     <style>
         /* Animações */
@@ -71,6 +74,16 @@
         const LICENSE_PRICE = "R$ 59,99";
         const SALT = "SILVACE-SECRET-2025"; 
         const FREE_LIMIT = 10; 
+
+        // Lista de Categorias
+        const CATEGORIES = [
+            "Água", "Animal de estimação", "Beleza", "Colaborador", "Combustível", "Contador", "Educação", 
+            "Eletrodomésticos", "Energia", "Fast food", "Feira", "Fornecedor", "Imposto", 
+            "Internet", "Investimentos", "Jurídico", "Lazer", "Luz", "Manutenção de veículos", "Outras prestações", 
+            "Prestação da casa", "Prestação do carro", "Reforma/manutenção/ornamentação", 
+            "Salário", "Saúde", "Streaming", "Transporte", "Utensílios", 
+            "Vendas", "Vestimenta"
+        ].sort();
 
         const getDeviceId = () => {
             let id = localStorage.getItem('nexus_device_id');
@@ -126,24 +139,93 @@
 
         const ReportModal = ({ transactions, month, onClose }) => {
             const [isGenerating, setIsGenerating] = useState(false);
+            const incomeChartRef = useRef(null);
+            const expenseChartRef = useRef(null);
+
             const reportData = useMemo(() => {
                 const filtered = transactions.filter(t => t.date.startsWith(month));
                 const stats = filtered.reduce((acc, curr) => {
                     curr.type === 'income' ? acc.income += curr.amount : acc.expense += curr.amount;
+                    
+                    // Stats by method
                     if(!acc.byMethod[curr.method]) acc.byMethod[curr.method] = 0;
                     acc.byMethod[curr.method] += curr.amount;
-                    const person = curr.beneficiary || 'Eu';
-                    if(!acc.byPerson[person]) acc.byPerson[person] = 0;
-                    acc.byPerson[person] += curr.amount;
+                    
+                    // Stats by category
+                    const cat = curr.category || 'Outros';
+                    if (curr.type === 'income') {
+                        if(!acc.byCatIncome[cat]) acc.byCatIncome[cat] = 0;
+                        acc.byCatIncome[cat] += curr.amount;
+                    } else {
+                        if(!acc.byCatExpense[cat]) acc.byCatExpense[cat] = 0;
+                        acc.byCatExpense[cat] += curr.amount;
+                    }
+
                     return acc;
-                }, { income: 0, expense: 0, byMethod: {}, byPerson: {} });
+                }, { income: 0, expense: 0, byMethod: {}, byCatIncome: {}, byCatExpense: {} });
                 return { filtered: filtered.sort((a,b) => new Date(a.date) - new Date(b.date)), stats };
             }, [transactions, month]);
+
+            // Configurar Gráficos
+            useEffect(() => {
+                if (!incomeChartRef.current || !expenseChartRef.current) return;
+
+                // Prepare Data for Charts (Sorted Descending)
+                const incomeCats = Object.entries(reportData.stats.byCatIncome)
+                    .sort(([,a], [,b]) => b - a);
+                const expenseCats = Object.entries(reportData.stats.byCatExpense)
+                    .sort(([,a], [,b]) => b - a);
+
+                // Income Chart
+                const incomeChart = new Chart(incomeChartRef.current, {
+                    type: 'bar',
+                    data: {
+                        labels: incomeCats.map(([k]) => k),
+                        datasets: [{
+                            label: 'Entradas',
+                            data: incomeCats.map(([,v]) => v),
+                            backgroundColor: '#10b981', // emerald-500
+                            borderRadius: 4
+                        }]
+                    },
+                    options: {
+                        indexAxis: 'y',
+                        responsive: true,
+                        plugins: { legend: { display: false } },
+                        scales: { x: { grid: { display: false } }, y: { grid: { display: false } } }
+                    }
+                });
+
+                // Expense Chart
+                const expenseChart = new Chart(expenseChartRef.current, {
+                    type: 'bar',
+                    data: {
+                        labels: expenseCats.map(([k]) => k),
+                        datasets: [{
+                            label: 'Saídas',
+                            data: expenseCats.map(([,v]) => v),
+                            backgroundColor: '#f43f5e', // rose-500
+                            borderRadius: 4
+                        }]
+                    },
+                    options: {
+                        indexAxis: 'y',
+                        responsive: true,
+                        plugins: { legend: { display: false } },
+                        scales: { x: { grid: { display: false } }, y: { grid: { display: false } } }
+                    }
+                });
+
+                return () => {
+                    incomeChart.destroy();
+                    expenseChart.destroy();
+                };
+            }, [reportData]);
 
             const downloadPDF = () => {
                 setIsGenerating(true);
                 const element = document.getElementById('report-content');
-                const opt = { margin: 0, filename: `relatorio-nexus-${month}.pdf`, image: { type: 'jpeg', quality: 0.98 }, html2canvas: { scale: 2, useCORS: true }, jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' } };
+                const opt = { margin: 5, filename: `relatorio-nexus-${month}.pdf`, image: { type: 'jpeg', quality: 0.98 }, html2canvas: { scale: 2, useCORS: true }, jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' } };
                 html2pdf().set(opt).from(element).save().then(() => setIsGenerating(false));
             };
 
@@ -165,13 +247,31 @@
                                 <p className="text-slate-500 uppercase tracking-widest text-xs font-bold">Relatório Financeiro Detalhado</p>
                                 <p className="text-lg font-medium text-slate-700 mt-2 capitalize bg-slate-100 inline-block px-4 py-1 rounded-full border border-slate-200">{new Date(month + '-02').toLocaleString('pt-BR', { month: 'long', year: 'numeric' })}</p>
                             </div>
+                            
+                            {/* Resumo */}
                             <div className="grid grid-cols-3 gap-4 mb-8">
                                 <div className="p-4 bg-emerald-50 border border-emerald-100 rounded-xl text-center"><p className="text-xs text-emerald-600 font-bold uppercase">Entradas</p><p className="text-xl font-bold text-emerald-700">{new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(reportData.stats.income)}</p></div>
                                 <div className="p-4 bg-rose-50 border border-rose-100 rounded-xl text-center"><p className="text-xs text-rose-600 font-bold uppercase">Saídas</p><p className="text-xl font-bold text-rose-700">{new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(reportData.stats.expense)}</p></div>
                                 <div className="p-4 bg-slate-100 border border-slate-200 rounded-xl text-center"><p className="text-xs text-slate-500 font-bold uppercase">Saldo</p><p className={`text-xl font-bold ${reportData.stats.income - reportData.stats.expense >= 0 ? 'text-slate-800' : 'text-rose-600'}`}>{new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(reportData.stats.income - reportData.stats.expense)}</p></div>
                             </div>
-                            <div><h3 className="text-sm font-bold text-slate-700 uppercase border-b-2 border-slate-200 pb-2 mb-4">Extrato Detalhado</h3>
-                                <table className="w-full text-sm text-left border-collapse"><thead className="bg-slate-100 text-slate-600 font-bold uppercase text-xs"><tr><th className="p-2 rounded-l-lg">Data</th><th className="p-2">Descrição</th><th className="p-2">Método</th><th className="p-2 text-right rounded-r-lg">Valor</th></tr></thead><tbody className="divide-y divide-gray-100">{reportData.filtered.map(t => (<tr key={t.id}><td className="p-2 text-slate-500 whitespace-nowrap">{new Date(t.date+'T00:00:00').toLocaleDateString('pt-BR')}</td><td className="p-2 font-medium text-slate-700">{t.description} {t.beneficiary !== 'eu' && <span className="text-[10px] bg-slate-100 px-1 rounded ml-1 text-slate-500 capitalize border border-slate-200">{t.beneficiary}</span>}</td><td className="p-2 text-slate-500 capitalize">{methodMap[t.method] || t.method}</td><td className={`p-2 text-right font-bold whitespace-nowrap ${t.type === 'income' ? 'text-emerald-600' : 'text-rose-600'}`}>{t.type === 'income' ? '+' : '-'}{new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(t.amount)}</td></tr>))}</tbody></table>
+
+                            {/* Gráficos */}
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8 page-break-inside-avoid">
+                                <div className="bg-slate-50 p-4 rounded-xl border border-slate-100">
+                                    <h4 className="text-sm font-bold text-emerald-700 mb-2 uppercase flex items-center gap-2"><Icons.TrendingUp size={16}/> Receitas por Categoria</h4>
+                                    <canvas ref={incomeChartRef} id="incomeChart"></canvas>
+                                    {Object.keys(reportData.stats.byCatIncome).length === 0 && <p className="text-xs text-slate-400 text-center py-4">Sem dados</p>}
+                                </div>
+                                <div className="bg-slate-50 p-4 rounded-xl border border-slate-100">
+                                    <h4 className="text-sm font-bold text-rose-700 mb-2 uppercase flex items-center gap-2"><Icons.TrendingDown size={16}/> Despesas por Categoria</h4>
+                                    <canvas ref={expenseChartRef} id="expenseChart"></canvas>
+                                    {Object.keys(reportData.stats.byCatExpense).length === 0 && <p className="text-xs text-slate-400 text-center py-4">Sem dados</p>}
+                                </div>
+                            </div>
+
+                            {/* Tabela */}
+                            <div className="mt-8"><h3 className="text-sm font-bold text-slate-700 uppercase border-b-2 border-slate-200 pb-2 mb-4">Extrato Detalhado</h3>
+                                <table className="w-full text-sm text-left border-collapse"><thead className="bg-slate-100 text-slate-600 font-bold uppercase text-xs"><tr><th className="p-2 rounded-l-lg">Data</th><th className="p-2">Descrição</th><th className="p-2 hidden sm:table-cell">Categoria</th><th className="p-2 text-right rounded-r-lg">Valor</th></tr></thead><tbody className="divide-y divide-gray-100">{reportData.filtered.map(t => (<tr key={t.id}><td className="p-2 text-slate-500 whitespace-nowrap">{new Date(t.date+'T00:00:00').toLocaleDateString('pt-BR')}</td><td className="p-2 font-medium text-slate-700">{t.description} {t.beneficiary !== 'eu' && <span className="text-[10px] bg-slate-100 px-1 rounded ml-1 text-slate-500 capitalize border border-slate-200">{t.beneficiary}</span>}</td><td className="p-2 text-slate-500 text-xs hidden sm:table-cell">{t.category || '-'}</td><td className={`p-2 text-right font-bold whitespace-nowrap ${t.type === 'income' ? 'text-emerald-600' : 'text-rose-600'}`}>{t.type === 'income' ? '+' : '-'}{new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(t.amount)}</td></tr>))}</tbody></table>
                                 {reportData.filtered.length === 0 && <p className="text-center text-slate-400 py-8 italic border border-dashed border-slate-200 rounded-lg mt-2">Sem movimentações neste período.</p>}
                             </div>
                         </div>
@@ -221,7 +321,8 @@
             const [selectedMonth, setSelectedMonth] = useState(() => { const now = new Date(); return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`; });
             const [editingId, setEditingId] = useState(null);
             const [itemToDelete, setItemToDelete] = useState(null);
-            const [formData, setFormData] = useState({ description: '', amount: '', type: 'expense', date: new Date().toISOString().split('T')[0], method: 'pix', beneficiary: 'eu', additionalInfo: '' });
+            // Atualizado o estado inicial do form para incluir category
+            const [formData, setFormData] = useState({ description: '', amount: '', type: 'expense', date: new Date().toISOString().split('T')[0], method: 'pix', beneficiary: 'eu', category: '', additionalInfo: '' });
 
             useEffect(() => {
                 if (navigator.storage && navigator.storage.persist) { navigator.storage.persist(); }
@@ -287,12 +388,12 @@
                 if (!editingId && !isPremium && transactions.length >= FREE_LIMIT) { setShowModal(false); setShowPremiumModal(true); return; }
                 if (editingId) { setTransactions(transactions.map(t => t.id === editingId ? { ...t, ...formData, amount: parseFloat(formData.amount) } : t)); } 
                 else { setTransactions([{ id: Date.now().toString(), ...formData, amount: parseFloat(formData.amount), createdAt: new Date().toISOString() }, ...transactions]); }
-                setFormData({ description: '', amount: '', type: 'expense', date: new Date().toISOString().split('T')[0], method: 'pix', beneficiary: 'eu', additionalInfo: '' });
+                setFormData({ description: '', amount: '', type: 'expense', date: new Date().toISOString().split('T')[0], method: 'pix', beneficiary: 'eu', category: '', additionalInfo: '' });
                 setEditingId(null); setShowModal(false);
             };
             const handleOpenModal = (t = null) => {
                 if (!t && !isPremium && transactions.length >= FREE_LIMIT) { setShowPremiumModal(true); return; }
-                if (t) { setFormData(t); setEditingId(t.id); } else { setFormData({ description: '', amount: '', type: 'expense', date: new Date().toISOString().split('T')[0], method: 'pix', beneficiary: 'eu', additionalInfo: '' }); setEditingId(null); }
+                if (t) { setFormData(t); setEditingId(t.id); } else { setFormData({ description: '', amount: '', type: 'expense', date: new Date().toISOString().split('T')[0], method: 'pix', beneficiary: 'eu', category: '', additionalInfo: '' }); setEditingId(null); }
                 setShowModal(true);
             };
             const filteredTransactions = useMemo(() => {
@@ -384,7 +485,7 @@
                         </div>
                     </nav>
 
-                    {showModal && (<div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-end sm:items-center justify-center animate-fadeIn"><div className="bg-white w-full max-w-lg rounded-t-3xl sm:rounded-2xl p-6 shadow-2xl animate-slideUp max-h-[90vh] overflow-y-auto"><div className="flex justify-between items-center mb-6"><h2 className="text-xl font-bold text-slate-800">{editingId ? 'Editar' : 'Novo Lançamento'}</h2><button onClick={() => setShowModal(false)} className="p-2 bg-gray-100 rounded-full"><Icons.X size={20} /></button></div><form onSubmit={handleSaveTransaction} className="space-y-4"><div className="flex bg-gray-100 p-1 rounded-xl"><button type="button" onClick={() => setFormData({...formData, type: 'expense'})} className={`flex-1 py-2 rounded-lg font-medium text-sm flex items-center justify-center gap-2 transition-all ${formData.type === 'expense' ? 'bg-white text-rose-600 shadow-sm' : 'text-gray-500'}`}><Icons.TrendingDown size={16} /> Saída</button><button type="button" onClick={() => setFormData({...formData, type: 'income'})} className={`flex-1 py-2 rounded-lg font-medium text-sm flex items-center justify-center gap-2 transition-all ${formData.type === 'income' ? 'bg-white text-emerald-600 shadow-sm' : 'text-gray-500'}`}><Icons.TrendingUp size={16} /> Entrada</button></div><div><label className="block text-xs font-bold text-slate-500 uppercase">Valor</label><input type="number" step="0.01" required className="w-full p-3 bg-slate-50 border rounded-xl text-lg font-bold" value={formData.amount} onChange={(e) => setFormData({...formData, amount: e.target.value})} /></div><div><label className="block text-xs font-bold text-slate-500 uppercase">Descrição</label><input type="text" required className="w-full p-3 bg-slate-50 border rounded-xl" value={formData.description} onChange={(e) => setFormData({...formData, description: e.target.value})} /></div><div className="grid grid-cols-2 gap-4"><div><label className="block text-xs font-bold text-slate-500 uppercase">Data</label><input type="date" required className="w-full p-3 bg-slate-50 border rounded-xl" value={formData.date} onChange={(e) => setFormData({...formData, date: e.target.value})} /></div><div><label className="block text-xs font-bold text-slate-500 uppercase">Referente</label><select className="w-full p-3 bg-slate-50 border rounded-xl" value={formData.beneficiary} onChange={(e) => setFormData({...formData, beneficiary: e.target.value})}><option value="eu">Eu</option><option value="esposa">Esposa</option><option value="filhos">Filhos</option><option value="pais">Pais</option><option value="irmaos">Irmãos</option><option value="empresa">Empresa</option><option value="outro">Outro</option></select></div></div><div><label className="block text-xs font-bold text-slate-500 uppercase">Método</label><select className="w-full p-3 bg-slate-50 border rounded-xl" value={formData.method} onChange={(e) => setFormData({...formData, method: e.target.value})}><option value="pix">Pix</option><option value="money">Dinheiro</option><option value="card_credit">Crédito</option><option value="card_debit">Débito</option><option value="cheque">Cheque</option></select></div><div><label className="block text-xs font-bold text-slate-500 uppercase">Infos</label><textarea className="w-full p-3 bg-slate-50 border rounded-xl" value={formData.additionalInfo} onChange={(e) => setFormData({...formData, additionalInfo: e.target.value})} /></div><button type="submit" className={`w-full py-3 rounded-lg font-bold text-white shadow-md ${formData.type === 'income' ? 'bg-emerald-600' : 'bg-rose-500'}`}>Salvar</button></form></div></div>)}
+                    {showModal && (<div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-end sm:items-center justify-center animate-fadeIn"><div className="bg-white w-full max-w-lg rounded-t-3xl sm:rounded-2xl p-6 shadow-2xl animate-slideUp max-h-[90vh] overflow-y-auto"><div className="flex justify-between items-center mb-6"><h2 className="text-xl font-bold text-slate-800">{editingId ? 'Editar' : 'Novo Lançamento'}</h2><button onClick={() => setShowModal(false)} className="p-2 bg-gray-100 rounded-full"><Icons.X size={20} /></button></div><form onSubmit={handleSaveTransaction} className="space-y-4"><div className="flex bg-gray-100 p-1 rounded-xl"><button type="button" onClick={() => setFormData({...formData, type: 'expense'})} className={`flex-1 py-2 rounded-lg font-medium text-sm flex items-center justify-center gap-2 transition-all ${formData.type === 'expense' ? 'bg-white text-rose-600 shadow-sm' : 'text-gray-500'}`}><Icons.TrendingDown size={16} /> Saída</button><button type="button" onClick={() => setFormData({...formData, type: 'income'})} className={`flex-1 py-2 rounded-lg font-medium text-sm flex items-center justify-center gap-2 transition-all ${formData.type === 'income' ? 'bg-white text-emerald-600 shadow-sm' : 'text-gray-500'}`}><Icons.TrendingUp size={16} /> Entrada</button></div><div><label className="block text-xs font-bold text-slate-500 uppercase">Valor</label><input type="number" step="0.01" required className="w-full p-3 bg-slate-50 border rounded-xl text-lg font-bold" value={formData.amount} onChange={(e) => setFormData({...formData, amount: e.target.value})} /></div><div><label className="block text-xs font-bold text-slate-500 uppercase">Descrição</label><input type="text" required className="w-full p-3 bg-slate-50 border rounded-xl" value={formData.description} onChange={(e) => setFormData({...formData, description: e.target.value})} /></div><div className="grid grid-cols-2 gap-4"><div><label className="block text-xs font-bold text-slate-500 uppercase">Data</label><input type="date" required className="w-full p-3 bg-slate-50 border rounded-xl" value={formData.date} onChange={(e) => setFormData({...formData, date: e.target.value})} /></div><div><label className="block text-xs font-bold text-slate-500 uppercase">Referente</label><select className="w-full p-3 bg-slate-50 border rounded-xl" value={formData.beneficiary} onChange={(e) => setFormData({...formData, beneficiary: e.target.value})}><option value="eu">Eu</option><option value="esposa">Esposa</option><option value="filhos">Filhos</option><option value="pais">Pais</option><option value="irmaos">Irmãos</option><option value="empresa">Empresa</option><option value="outro">Outro</option></select></div></div><div><label className="block text-xs font-bold text-slate-500 uppercase">Método</label><select className="w-full p-3 bg-slate-50 border rounded-xl" value={formData.method} onChange={(e) => setFormData({...formData, method: e.target.value})}><option value="pix">Pix</option><option value="money">Dinheiro</option><option value="card_credit">Crédito</option><option value="card_debit">Débito</option><option value="cheque">Cheque</option></select></div><div><label className="block text-xs font-bold text-slate-500 uppercase">Categoria <span className="text-[10px] font-normal text-slate-400 lowercase">(opcional)</span></label><select className="w-full p-3 bg-slate-50 border rounded-xl" value={formData.category} onChange={(e) => setFormData({...formData, category: e.target.value})}><option value="">Selecione...</option>{CATEGORIES.map(cat => <option key={cat} value={cat}>{cat}</option>)}</select></div><div><label className="block text-xs font-bold text-slate-500 uppercase">Infos</label><textarea className="w-full p-3 bg-slate-50 border rounded-xl" value={formData.additionalInfo} onChange={(e) => setFormData({...formData, additionalInfo: e.target.value})} /></div><button type="submit" className={`w-full py-3 rounded-lg font-bold text-white shadow-md ${formData.type === 'income' ? 'bg-emerald-600' : 'bg-rose-500'}`}>Salvar</button></form></div></div>)}
                     {showReport && (<ReportModal transactions={transactions} month={selectedMonth} onClose={() => setShowReport(false)} />)}
                     {showSettings && (<div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[60] flex items-center justify-center p-4 animate-fadeIn text-slate-800"><div className="bg-white rounded-2xl p-6 shadow-2xl max-w-sm w-full animate-scaleIn overflow-y-auto max-h-[90vh]"><div className="flex justify-between items-center mb-4"><h3 className="text-lg font-bold text-slate-800">Configurações</h3><button onClick={() => setShowSettings(false)} className="p-2 bg-gray-100 rounded-full"><Icons.X size={20}/></button></div><div className="bg-emerald-50 p-4 rounded-xl border border-emerald-100 mb-4"><p className="text-xs font-bold text-emerald-800 uppercase mb-1">{isPremium ? 'Licença Ativa (Device Locked)' : 'Versão Gratuita'}</p><div className="flex items-center gap-2 text-sm text-emerald-700 font-mono"><Icons.Smartphone size={16}/> <span>{deviceId}</span></div></div>{backupWarning && <div className="mb-4 p-3 bg-amber-50 border border-amber-200 rounded-xl flex items-center gap-3 animate-fadeIn"><div className="text-amber-600"><Icons.AlertOctagon size={24}/></div><div><p className="text-xs font-bold text-amber-700">Backup Recomendado</p><p className="text-[10px] text-amber-600">Seus dados ficam salvos neste navegador. Faça um backup.</p></div></div>}<div className="space-y-2"><button onClick={handleExportData} className="w-full p-3 border rounded-xl flex items-center gap-3 hover:bg-slate-50"><Icons.Download className="text-emerald-600"/> <span>Baixar Backup Completo</span> {!isPremium && <Icons.Lock size={14} className="ml-auto text-slate-300"/>}</button><button onClick={handleImportClick} className="w-full p-3 border rounded-xl flex items-center gap-3 hover:bg-slate-50"><Icons.Upload className="text-blue-600"/> <span>Restaurar Backup</span> {!isPremium && <Icons.Lock size={14} className="ml-auto text-slate-300"/>}</button>{isPremium && <button onClick={logout} className="w-full p-3 border border-rose-200 bg-rose-50 rounded-xl flex items-center gap-3 hover:bg-rose-100 mt-4 text-rose-700 font-bold"><Icons.LogOut className="text-rose-600"/> <span>Desativar Licença</span></button>}<input type="file" ref={fileInputRef} onChange={handleFileUpload} accept=".json" className="hidden" /></div></div></div>)}
                     {showPremiumModal && (<PremiumModal onActivate={unlockApp} deviceId={deviceId} onClose={() => setShowPremiumModal(false)} />)}
