@@ -330,6 +330,7 @@
                         <div className="relative z-10 pt-2 text-center">
                             <h1 className="text-2xl font-bold tracking-tight">Nexus</h1>
                             <p className="text-emerald-400 text-xs font-bold uppercase tracking-widest bg-slate-800/50 px-2 py-1 rounded-full mt-1">Controle de Finanças</p>
+                            <p className="text-[10px] text-slate-400 mt-2 font-medium">Aplicativo desenvolvido por Lucas Sebastião Barbosa Silva</p>
                             <div className={`mt-2 flex items-center justify-center gap-1 text-[10px] font-medium transition-all duration-300 ${saveStatus === 'saved' ? 'opacity-100' : 'opacity-0'}`}><Icons.CheckCircle2 size={12} className="text-emerald-400" /><span className="text-emerald-100">Salvo no dispositivo</span></div>
                             <div className="mt-4"><span className="text-slate-400 text-sm font-medium uppercase tracking-wider">Saldo Atual</span><div className={`text-4xl font-bold mt-1 ${balance >= 0 ? 'text-white' : 'text-rose-400'}`}>{new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(balance)}</div></div>
                         </div>
@@ -362,9 +363,12 @@
                             </div>
                         </div>
                         
-                        <div className="mt-8 p-4 text-[10px] text-slate-400 text-justify border-t border-slate-200">
-                            <p className="font-bold mb-1">AVISO LEGAL DE DIREITOS AUTORAIS</p>
-                            <p>© 2025 Maria Jaqueline da Silva Pereira. Todos os direitos reservados.</p>
+                        <div className="mt-8 p-6 text-xs text-slate-600 text-center border-t border-slate-200 bg-slate-100 rounded-xl mb-24 md:mb-8">
+                            <p className="font-bold mb-2 uppercase tracking-wide">Aviso Legal de Direitos Autorais</p>
+                            <p className="leading-relaxed">
+                                © 2025 Maria Jaqueline da Silva Pereira - CNPJ: 62.323.279/0001-00. <br/>
+                                Todos os direitos reservados. Este software é protegido pelas leis de propriedade intelectual e direitos autorais internacionais.
+                            </p>
                         </div>
                         <div className="h-20 md:hidden"></div>
                     </main>
