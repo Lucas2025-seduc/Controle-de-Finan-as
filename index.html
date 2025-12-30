@@ -158,29 +158,27 @@
             AlertOctagon: (p) => <Icon {...p}><polygon points="7.86 2 16.14 2 22 7.86 22 16.14 16.14 22 7.86 22 2 16.14 2 7.86 7.86 2"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></Icon>
         };
 
-        const ReportModal = ({ transactions, month, onClose }) => {
+        const ReportModal = ({ transactions, periodLabel, onClose }) => {
             const [isGenerating, setIsGenerating] = useState(false);
+            const [statementFilter, setStatementFilter] = useState('all'); // Novo estado para filtro de extrato
             const incomeChartRef = useRef(null);
             const expenseChartRef = useRef(null);
             const methodChartRef = useRef(null); 
             const beneficiaryChartRef = useRef(null);
 
             const reportData = useMemo(() => {
-                const filtered = transactions.filter(t => t.date.startsWith(month));
-                const stats = filtered.reduce((acc, curr) => {
+                // Transactions are already filtered by the parent (App)
+                const stats = transactions.reduce((acc, curr) => {
                     curr.type === 'income' ? acc.income += curr.amount : acc.expense += curr.amount;
                     
-                    // Stats by method
                     const methodKey = curr.method || 'Não Informado';
                     if(!acc.byMethod[methodKey]) acc.byMethod[methodKey] = 0;
                     acc.byMethod[methodKey] += curr.amount;
 
-                    // Stats by Beneficiary (Referente)
-                    const beneficiaryKey = curr.beneficiary || 'eu'; // Padrão 'eu'
+                    const beneficiaryKey = curr.beneficiary || 'eu';
                     if(!acc.byBeneficiary[beneficiaryKey]) acc.byBeneficiary[beneficiaryKey] = 0;
                     acc.byBeneficiary[beneficiaryKey] += curr.amount;
                     
-                    // Stats by category
                     const cat = curr.category || 'Outros';
                     if (curr.type === 'income') {
                         if(!acc.byCatIncome[cat]) acc.byCatIncome[cat] = 0;
@@ -192,8 +190,16 @@
 
                     return acc;
                 }, { income: 0, expense: 0, byMethod: {}, byBeneficiary: {}, byCatIncome: {}, byCatExpense: {} });
-                return { filtered: filtered.sort((a,b) => new Date(a.date) - new Date(b.date)), stats };
-            }, [transactions, month]);
+                return { filtered: transactions.sort((a,b) => new Date(a.date) - new Date(b.date)), stats };
+            }, [transactions]);
+
+            const displayedTransactions = useMemo(() => {
+                return reportData.filtered.filter(t => {
+                    if (statementFilter === 'income') return t.type === 'income';
+                    if (statementFilter === 'expense') return t.type === 'expense';
+                    return true;
+                });
+            }, [reportData.filtered, statementFilter]);
 
             useEffect(() => {
                 if (!incomeChartRef.current || !expenseChartRef.current || !methodChartRef.current || !beneficiaryChartRef.current) return;
@@ -280,7 +286,7 @@
             const downloadPDF = () => {
                 setIsGenerating(true);
                 const element = document.getElementById('report-content');
-                const opt = { margin: 5, filename: `relatorio-nexus-${month}.pdf`, image: { type: 'jpeg', quality: 0.98 }, html2canvas: { scale: 2, useCORS: true }, jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' } };
+                const opt = { margin: 5, filename: `relatorio-nexus-${periodLabel.replace(/\s+/g, '-')}.pdf`, image: { type: 'jpeg', quality: 0.98 }, html2canvas: { scale: 2, useCORS: true }, jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' } };
                 html2pdf().set(opt).from(element).save().then(() => setIsGenerating(false));
             };
 
@@ -288,7 +294,7 @@
                 <div className="fixed inset-0 bg-slate-900/90 backdrop-blur-sm z-[100] flex items-center justify-center p-0 sm:p-4 overflow-y-auto">
                     <div className="bg-white w-full max-w-2xl min-h-screen sm:min-h-0 sm:rounded-2xl shadow-2xl animate-scaleIn text-slate-800 flex flex-col relative">
                         <div className="p-4 border-b border-gray-200 bg-slate-50 sm:rounded-t-2xl flex justify-between items-center no-print" data-html2canvas-ignore="true">
-                            <h2 className="text-lg font-bold text-slate-800 flex items-center gap-2"><Icons.FileText className="text-emerald-600"/> Relatório Mensal</h2>
+                            <h2 className="text-lg font-bold text-slate-800 flex items-center gap-2"><Icons.FileText className="text-emerald-600"/> Relatório: {periodLabel}</h2>
                             <div className="flex gap-2">
                                 <button onClick={downloadPDF} disabled={isGenerating} className="px-3 py-2 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 flex items-center gap-2 text-sm font-bold shadow disabled:opacity-50">{isGenerating ? 'Gerando...' : <><Icons.Download size={18}/> Baixar PDF</>}</button>
                                 <button onClick={onClose} className="p-2 bg-gray-200 hover:bg-gray-300 rounded-lg text-gray-600"><Icons.X size={20}/></button>
@@ -298,7 +304,7 @@
                             <div className="text-center mb-8 border-b-2 border-emerald-500 pb-4">
                                 <h1 className="text-3xl font-black text-slate-900 mb-1">Nexus Finanças</h1>
                                 <p className="text-slate-500 uppercase tracking-widest text-xs font-bold">Relatório Financeiro Detalhado</p>
-                                <p className="text-lg font-medium text-slate-700 mt-2 capitalize bg-slate-100 inline-block px-4 py-1 rounded-full border border-slate-200">{new Date(month + '-02').toLocaleString('pt-BR', { month: 'long', year: 'numeric' })}</p>
+                                <p className="text-lg font-medium text-slate-700 mt-2 capitalize bg-slate-100 inline-block px-4 py-1 rounded-full border border-slate-200">{periodLabel}</p>
                             </div>
                             
                             <div className="grid grid-cols-3 gap-4 mb-8">
@@ -338,9 +344,20 @@
                                 </div>
                             </div>
 
-                            <div className="mt-8"><h3 className="text-sm font-bold text-slate-700 uppercase border-b-2 border-slate-200 pb-2 mb-4">Extrato Detalhado</h3>
-                                <table className="w-full text-sm text-left border-collapse"><thead className="bg-slate-100 text-slate-600 font-bold uppercase text-xs"><tr><th className="p-2 rounded-l-lg">Data</th><th className="p-2">Descrição</th><th className="p-2 hidden sm:table-cell">Método</th><th className="p-2 hidden sm:table-cell">Categoria</th><th className="p-2 text-right rounded-r-lg">Valor</th></tr></thead><tbody className="divide-y divide-gray-100">{reportData.filtered.map(t => (<tr key={t.id}><td className="p-2 text-slate-500 whitespace-nowrap">{new Date(t.date+'T00:00:00').toLocaleDateString('pt-BR')}</td><td className="p-2 font-medium text-slate-700">{t.description} {t.beneficiary !== 'eu' && <span className="text-[10px] bg-slate-100 px-1 rounded ml-1 text-slate-500 capitalize border border-slate-200">{t.beneficiary}</span>}</td><td className="p-2 text-slate-500 text-xs hidden sm:table-cell">{METHOD_MAP[t.method] || 'Não Inf.'}</td><td className="p-2 text-slate-500 text-xs hidden sm:table-cell">{t.category || '-'}</td><td className={`p-2 text-right font-bold whitespace-nowrap ${t.type === 'income' ? 'text-emerald-600' : 'text-rose-600'}`}>{t.type === 'income' ? '+' : '-'}{new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(t.amount)}</td></tr>))}</tbody></table>
-                                {reportData.filtered.length === 0 && <p className="text-center text-slate-400 py-8 italic border border-dashed border-slate-200 rounded-lg mt-2">Sem movimentações neste período.</p>}
+                            <div className="mt-8">
+                                <div className="flex justify-between items-center border-b-2 border-slate-200 pb-2 mb-4">
+                                    <h3 className="text-sm font-bold text-slate-700 uppercase">Extrato Detalhado</h3>
+                                    
+                                    {/* Filtro de Extrato - Ignorado na impressão/PDF se desejado, mas mantido aqui para interatividade */}
+                                    <div className="flex bg-slate-100 rounded-lg p-1 gap-1" data-html2canvas-ignore="true">
+                                        <button onClick={() => setStatementFilter('all')} className={`px-3 py-1 rounded-md text-[10px] font-bold transition-all ${statementFilter === 'all' ? 'bg-slate-800 text-white shadow' : 'text-slate-500 hover:bg-slate-200'}`}>Todos</button>
+                                        <button onClick={() => setStatementFilter('income')} className={`px-3 py-1 rounded-md text-[10px] font-bold transition-all ${statementFilter === 'income' ? 'bg-emerald-500 text-white shadow' : 'text-slate-500 hover:bg-slate-200'}`}>Entradas</button>
+                                        <button onClick={() => setStatementFilter('expense')} className={`px-3 py-1 rounded-md text-[10px] font-bold transition-all ${statementFilter === 'expense' ? 'bg-rose-500 text-white shadow' : 'text-slate-500 hover:bg-slate-200'}`}>Saídas</button>
+                                    </div>
+                                </div>
+
+                                <table className="w-full text-sm text-left border-collapse"><thead className="bg-slate-100 text-slate-600 font-bold uppercase text-xs"><tr><th className="p-2 rounded-l-lg">Data</th><th className="p-2">Descrição</th><th className="p-2 hidden sm:table-cell">Método</th><th className="p-2 hidden sm:table-cell">Categoria</th><th className="p-2 text-right rounded-r-lg">Valor</th></tr></thead><tbody className="divide-y divide-gray-100">{displayedTransactions.map(t => (<tr key={t.id}><td className="p-2 text-slate-500 whitespace-nowrap">{new Date(t.date+'T00:00:00').toLocaleDateString('pt-BR')}</td><td className="p-2 font-medium text-slate-700">{t.description} {t.beneficiary !== 'eu' && <span className="text-[10px] bg-slate-100 px-1 rounded ml-1 text-slate-500 capitalize border border-slate-200">{t.beneficiary}</span>}</td><td className="p-2 text-slate-500 text-xs hidden sm:table-cell">{METHOD_MAP[t.method] || 'Não Inf.'}</td><td className="p-2 text-slate-500 text-xs hidden sm:table-cell">{t.category || '-'}</td><td className={`p-2 text-right font-bold whitespace-nowrap ${t.type === 'income' ? 'text-emerald-600' : 'text-rose-600'}`}>{t.type === 'income' ? '+' : '-'}{new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(t.amount)}</td></tr>))}</tbody></table>
+                                {displayedTransactions.length === 0 && <p className="text-center text-slate-400 py-8 italic border border-dashed border-slate-200 rounded-lg mt-2">Nenhum registro encontrado para este filtro.</p>}
                             </div>
                         </div>
                     </div>
@@ -353,7 +370,25 @@
             const [error, setError] = useState('');
             const [loading, setLoading] = useState(false);
             const handleBuyClick = () => { window.open(`https://wa.me/${SEU_WHATSAPP_VENDAS}?text=${encodeURIComponent(`Olá! Quero comprar a licença do Nexus Finanças.\n\nMeu Código de Instalação é: *${deviceId}*`)}`, '_blank'); };
-            const copyId = () => { try { navigator.clipboard.writeText(deviceId); alert("Código copiado!"); } catch (err) { alert("Erro ao copiar."); } };
+            
+            const copyId = () => {
+                // Fallback para ambientes onde navigator.clipboard é bloqueado (como iframes)
+                const textArea = document.createElement("textarea");
+                textArea.value = deviceId;
+                textArea.style.position = "fixed"; // Evitar scroll
+                textArea.style.opacity = "0";
+                document.body.appendChild(textArea);
+                textArea.focus();
+                textArea.select();
+                try {
+                    document.execCommand('copy');
+                    alert("Código copiado!");
+                } catch (err) {
+                    alert("Erro ao copiar. Anote: " + deviceId);
+                }
+                document.body.removeChild(textArea);
+            };
+
             const handleActivate = () => { if(!key.trim()) { setError('Digite a chave recebida.'); return; } setLoading(true); setError(''); setTimeout(() => { if (verifyUniqueKey(key, deviceId)) { onActivate(key.trim()); } else { setError('Chave inválida para este aparelho.'); setLoading(false); } }, 800); };
 
             return (
@@ -385,12 +420,13 @@
             const fileInputRef = useRef(null);
             const [saveStatus, setSaveStatus] = useState('idle');
             const [pendingImportData, setPendingImportData] = useState(null);
-            const [filterMode, setFilterMode] = useState('month');
-            const [selectedMonth, setSelectedMonth] = useState(() => { const now = new Date(); return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`; });
+            
+            // Novos estados para filtro
+            const [viewType, setViewType] = useState('monthly'); // 'daily', 'weekly', 'monthly', 'yearly'
+            const [referenceDate, setReferenceDate] = useState(new Date().toISOString().slice(0, 10)); // YYYY-MM-DD
+
             const [editingId, setEditingId] = useState(null);
             const [itemToDelete, setItemToDelete] = useState(null);
-            
-            // Estado do form com método opcional (string vazia por padrão)
             const [formData, setFormData] = useState({ description: '', amount: '', type: 'expense', date: new Date().toISOString().split('T')[0], method: '', beneficiary: 'eu', category: '', additionalInfo: '' });
 
             useEffect(() => {
@@ -465,21 +501,52 @@
                 if (t) { setFormData(t); setEditingId(t.id); } else { setFormData({ description: '', amount: '', type: 'expense', date: new Date().toISOString().split('T')[0], method: '', beneficiary: 'eu', category: '', additionalInfo: '' }); setEditingId(null); }
                 setShowModal(true);
             };
+
             const filteredTransactions = useMemo(() => {
-                const now = new Date();
-                const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-                const filtered = transactions.filter(t => {
+                const refDate = new Date(referenceDate + 'T00:00:00');
+                
+                return transactions.filter(t => {
                     const tDate = new Date(t.date + 'T00:00:00');
-                    if (filterMode === 'day') return tDate.getTime() === today.getTime();
-                    if (filterMode === 'week') { const weekAgo = new Date(today); weekAgo.setDate(today.getDate() - 7); return tDate >= weekAgo && tDate <= today; }
-                    if (filterMode === 'month') return `${tDate.getFullYear()}-${String(tDate.getMonth()+1).padStart(2,'0')}` === selectedMonth;
+                    if (viewType === 'daily') {
+                        return tDate.toDateString() === refDate.toDateString();
+                    }
+                    if (viewType === 'weekly') {
+                        const startOfWeek = new Date(refDate);
+                        startOfWeek.setDate(refDate.getDate() - refDate.getDay()); // Sunday
+                        const endOfWeek = new Date(startOfWeek);
+                        endOfWeek.setDate(startOfWeek.getDate() + 6); // Saturday
+                        return tDate >= startOfWeek && tDate <= endOfWeek;
+                    }
+                    if (viewType === 'monthly') {
+                        return tDate.getMonth() === refDate.getMonth() && tDate.getFullYear() === refDate.getFullYear();
+                    }
+                    if (viewType === 'yearly') {
+                        return tDate.getFullYear() === refDate.getFullYear();
+                    }
                     return true;
                 }).sort((a,b) => new Date(b.date) - new Date(a.date));
-                return { all: filtered, incomes: filtered.filter(t => t.type === 'income'), expenses: filtered.filter(t => t.type === 'expense') };
-            }, [transactions, filterMode, selectedMonth]);
-            const stats = useMemo(() => filteredTransactions.all.reduce((acc, curr) => { curr.type === 'income' ? acc.income += curr.amount : acc.expense += curr.amount; return acc; }, { income: 0, expense: 0 }), [filteredTransactions]);
+            }, [transactions, viewType, referenceDate]);
+
+            // Separação de incomes/expenses para os cards
+            const currentFilteredData = useMemo(() => {
+                return {
+                    incomes: filteredTransactions.filter(t => t.type === 'income'),
+                    expenses: filteredTransactions.filter(t => t.type === 'expense')
+                }
+            }, [filteredTransactions]);
+
+            const stats = useMemo(() => filteredTransactions.reduce((acc, curr) => { curr.type === 'income' ? acc.income += curr.amount : acc.expense += curr.amount; return acc; }, { income: 0, expense: 0 }), [filteredTransactions]);
             const balance = stats.income - stats.expense;
             const getBeneficiaryLabel = (key) => { const labels = { 'eu': 'Eu', 'esposa': 'Esposa', 'filhos': 'Filhos', 'pais': 'Pais', 'irmaos': 'Irmãos', 'empresa': 'Empresa', 'outro': 'Outro' }; return labels[key] || key || 'Eu'; };
+
+            const getPeriodLabel = () => {
+                const d = new Date(referenceDate + 'T00:00:00');
+                if (viewType === 'daily') return d.toLocaleDateString('pt-BR');
+                if (viewType === 'weekly') return 'Semana de ' + d.toLocaleDateString('pt-BR');
+                if (viewType === 'monthly') return d.toLocaleString('pt-BR', { month: 'long', year: 'numeric' });
+                if (viewType === 'yearly') return d.getFullYear().toString();
+                return '';
+            };
 
             if (isChecking) return <div className="min-h-screen bg-slate-900 flex items-center justify-center text-white"><Icons.Wallet className="animate-bounce" size={40} /></div>;
 
@@ -488,7 +555,6 @@
                     <header className="bg-slate-900 text-white p-6 pb-24 rounded-b-[2.5rem] md:rounded-t-3xl md:rounded-b-[2.5rem] shadow-xl relative overflow-hidden">
                         <div className="absolute top-0 right-0 p-4 opacity-10 pointer-events-none"><Icons.Wallet size={120} /></div>
                         
-                        {/* Botão Novo Lançamento para Desktop (Topo) */}
                         <div className="absolute top-6 left-6 hidden md:block z-50">
                              <button onClick={() => handleOpenModal()} className="px-4 py-2 bg-emerald-500 hover:bg-emerald-600 text-white font-bold rounded-lg shadow-lg flex items-center gap-2 transition-transform active:scale-95"><Icons.Plus size={18} /> Novo Lançamento</button>
                         </div>
@@ -508,11 +574,39 @@
                     </header>
 
                     <main className="px-4 -mt-16 relative z-20 max-w-6xl mx-auto space-y-4">
-                        <div className="flex items-center gap-2 bg-white p-2 rounded-xl shadow-sm border border-gray-100 overflow-x-auto no-scrollbar md:max-w-md md:mx-auto">
-                            <button onClick={() => setFilterMode('day')} className={`px-3 py-2 rounded-lg text-xs font-bold whitespace-nowrap transition-all ${filterMode === 'day' ? 'bg-slate-800 text-white' : 'text-slate-500'}`}>Hoje</button>
-                            <button onClick={() => setFilterMode('week')} className={`px-3 py-2 rounded-lg text-xs font-bold whitespace-nowrap transition-all ${filterMode === 'week' ? 'bg-slate-800 text-white' : 'text-slate-500'}`}>Semana</button>
-                            <div className={`flex items-center gap-2 px-3 py-2 rounded-lg border transition-all ${filterMode === 'month' ? 'border-slate-800' : 'border-transparent'}`}><span className="text-xs font-bold">Mês:</span><input type="month" value={selectedMonth} onChange={(e) => { setSelectedMonth(e.target.value); setFilterMode('month'); }} className="bg-transparent border-none text-sm font-bold w-full outline-none" /></div>
-                            {filterMode === 'month' && <button onClick={() => isPremium ? setShowReport(true) : setShowPremiumModal(true)} className="p-2 bg-slate-800 text-white rounded-lg hover:bg-slate-700 shadow-md transition-colors relative"><Icons.FileText size={18} />{!isPremium && <div className="absolute -top-1 -right-1 bg-amber-500 rounded-full p-0.5"><Icons.Lock size={10} className="text-white"/></div>}</button>}
+                        
+                        {/* Novo Painel de Controle de Filtros e Relatório */}
+                        <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-100 md:max-w-md md:mx-auto flex flex-col gap-3">
+                            <div className="flex gap-2">
+                                <select 
+                                    className="bg-slate-50 border border-slate-200 text-slate-700 text-sm rounded-lg focus:ring-emerald-500 focus:border-emerald-500 block w-full p-2.5 font-bold"
+                                    value={viewType}
+                                    onChange={(e) => setViewType(e.target.value)}
+                                >
+                                    <option value="daily">Diário</option>
+                                    <option value="weekly">Semanal</option>
+                                    <option value="monthly">Mensal</option>
+                                    <option value="yearly">Anual</option>
+                                </select>
+                                
+                                {viewType === 'daily' && <input type="date" value={referenceDate} onChange={(e) => setReferenceDate(e.target.value)} className="bg-slate-50 border border-slate-200 text-slate-700 text-sm rounded-lg focus:ring-emerald-500 focus:border-emerald-500 block w-full p-2.5 font-bold" />}
+                                {viewType === 'weekly' && <input type="date" value={referenceDate} onChange={(e) => setReferenceDate(e.target.value)} className="bg-slate-50 border border-slate-200 text-slate-700 text-sm rounded-lg focus:ring-emerald-500 focus:border-emerald-500 block w-full p-2.5 font-bold" />}
+                                {viewType === 'monthly' && <input type="month" value={referenceDate.slice(0, 7)} onChange={(e) => setReferenceDate(e.target.value + '-01')} className="bg-slate-50 border border-slate-200 text-slate-700 text-sm rounded-lg focus:ring-emerald-500 focus:border-emerald-500 block w-full p-2.5 font-bold" />}
+                                {viewType === 'yearly' && (
+                                    <select 
+                                        value={referenceDate.slice(0, 4)} 
+                                        onChange={(e) => setReferenceDate(e.target.value + '-01-01')} 
+                                        className="bg-slate-50 border border-slate-200 text-slate-700 text-sm rounded-lg focus:ring-emerald-500 focus:border-emerald-500 block w-full p-2.5 font-bold"
+                                    >
+                                        {[0,1,2,3,4,5].map(i => <option key={i} value={new Date().getFullYear() - i}>{new Date().getFullYear() - i}</option>)}
+                                    </select>
+                                )}
+                            </div>
+                            
+                            <button onClick={() => isPremium ? setShowReport(true) : setShowPremiumModal(true)} className="w-full bg-slate-800 text-white p-3 rounded-lg font-bold flex items-center justify-center gap-2 hover:bg-slate-700 transition-colors shadow-md relative">
+                                <Icons.FileText size={20}/> Visualizar Relatório
+                                {!isPremium && <div className="absolute -top-1 -right-1 bg-amber-500 rounded-full p-1"><Icons.Lock size={12} className="text-white"/></div>}
+                            </button>
                         </div>
 
                         {backupWarning && <div className="p-3 bg-amber-50 border border-amber-200 rounded-xl flex items-start gap-3 animate-fadeIn shadow-sm max-w-lg mx-auto"><div className="text-amber-600 mt-1"><Icons.Database size={20}/></div><div><p className="text-xs font-bold text-amber-800">Backup de Segurança</p><p className="text-[10px] text-amber-700 leading-relaxed">Seus dados são armazenados localmente. Recomendamos baixar um backup regularmente.</p></div></div>}
@@ -524,12 +618,12 @@
 
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                             <div className="bg-white rounded-xl shadow-md border border-gray-100 overflow-hidden h-fit">
-                                <div className="bg-emerald-50 px-4 py-3 border-b border-emerald-100 flex items-center justify-between"><h3 className="font-bold text-emerald-800 flex items-center gap-2 text-sm"><Icons.TrendingUp size={16}/> Entradas</h3><span className="text-xs font-bold text-emerald-600 bg-white px-2 py-0.5 rounded-full border border-emerald-200">{filteredTransactions.incomes.length}</span></div>
-                                <div className="divide-y divide-gray-50 p-2 max-h-[400px] overflow-y-auto">{filteredTransactions.incomes.map(t => (<div key={t.id} className="py-2 px-2 hover:bg-emerald-50/50 rounded-lg transition-colors group"><div className="flex justify-between items-center mb-1"><div className="flex-1 min-w-0 pr-2"><p className="font-bold text-sm text-slate-700 truncate">{t.description}</p><p className="text-[10px] text-slate-400 truncate">{new Date(t.date+'T00:00:00').toLocaleDateString('pt-BR')} • {t.method}</p></div><div className="text-right shrink-0 whitespace-nowrap"><span className="font-bold text-emerald-600 text-sm block">{new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(t.amount)}</span></div></div><div className="flex justify-between items-center mt-1"><span className="text-[9px] bg-slate-100 px-1.5 py-0.5 rounded text-slate-500 uppercase">{getBeneficiaryLabel(t.beneficiary)}</span><div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity"><button onClick={() => handleOpenModal(t)} className="text-slate-400 hover:text-emerald-600"><Icons.Pencil size={12} /></button><button onClick={() => setItemToDelete(t.id)} className="text-slate-400 hover:text-rose-500"><Icons.Trash2 size={12} /></button></div></div></div>))} {filteredTransactions.incomes.length === 0 && <p className="text-center text-xs text-slate-400 py-4 italic">Nenhuma entrada.</p>}</div>
+                                <div className="bg-emerald-50 px-4 py-3 border-b border-emerald-100 flex items-center justify-between"><h3 className="font-bold text-emerald-800 flex items-center gap-2 text-sm"><Icons.TrendingUp size={16}/> Entradas</h3><span className="text-xs font-bold text-emerald-600 bg-white px-2 py-0.5 rounded-full border border-emerald-200">{currentFilteredData.incomes.length}</span></div>
+                                <div className="divide-y divide-gray-50 p-2 max-h-[400px] overflow-y-auto">{currentFilteredData.incomes.map(t => (<div key={t.id} className="py-2 px-2 hover:bg-emerald-50/50 rounded-lg transition-colors group"><div className="flex justify-between items-center mb-1"><div className="flex-1 min-w-0 pr-2"><p className="font-bold text-sm text-slate-700 truncate">{t.description}</p><p className="text-[10px] text-slate-400 truncate">{new Date(t.date+'T00:00:00').toLocaleDateString('pt-BR')} • {t.method}</p></div><div className="text-right shrink-0 whitespace-nowrap"><span className="font-bold text-emerald-600 text-sm block">{new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(t.amount)}</span></div></div><div className="flex justify-between items-center mt-1"><span className="text-[9px] bg-slate-100 px-1.5 py-0.5 rounded text-slate-500 uppercase">{getBeneficiaryLabel(t.beneficiary)}</span><div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity"><button onClick={() => handleOpenModal(t)} className="text-slate-400 hover:text-emerald-600"><Icons.Pencil size={12} /></button><button onClick={() => setItemToDelete(t.id)} className="text-slate-400 hover:text-rose-500"><Icons.Trash2 size={12} /></button></div></div></div>))} {currentFilteredData.incomes.length === 0 && <p className="text-center text-xs text-slate-400 py-4 italic">Nenhuma entrada neste período.</p>}</div>
                             </div>
                             <div className="bg-white rounded-xl shadow-md border border-gray-100 overflow-hidden h-fit">
-                                <div className="bg-rose-50 px-4 py-3 border-b border-rose-100 flex items-center justify-between"><h3 className="font-bold text-rose-800 flex items-center gap-2 text-sm"><Icons.TrendingDown size={16}/> Saídas</h3><span className="text-xs font-bold text-rose-600 bg-white px-2 py-0.5 rounded-full border border-rose-200">{filteredTransactions.expenses.length}</span></div>
-                                <div className="divide-y divide-gray-50 p-2 max-h-[400px] overflow-y-auto">{filteredTransactions.expenses.map(t => (<div key={t.id} className="py-2 px-2 hover:bg-rose-50/50 rounded-lg transition-colors group"><div className="flex justify-between items-center mb-1"><div className="flex-1 min-w-0 pr-2"><p className="font-bold text-sm text-slate-700 truncate">{t.description}</p><p className="text-[10px] text-slate-400 truncate">{new Date(t.date+'T00:00:00').toLocaleDateString('pt-BR')} • {t.method}</p></div><div className="text-right shrink-0 whitespace-nowrap"><span className="font-bold text-rose-600 text-sm block">- {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(t.amount)}</span></div></div><div className="flex justify-between items-center mt-1"><span className="text-[9px] bg-slate-100 px-1.5 py-0.5 rounded text-slate-500 uppercase">{getBeneficiaryLabel(t.beneficiary)}</span><div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity"><button onClick={() => handleOpenModal(t)} className="text-slate-400 hover:text-emerald-600"><Icons.Pencil size={12} /></button><button onClick={() => setItemToDelete(t.id)} className="text-slate-400 hover:text-rose-500"><Icons.Trash2 size={12} /></button></div></div></div>))} {filteredTransactions.expenses.length === 0 && <p className="text-center text-xs text-slate-400 py-4 italic">Nenhuma saída.</p>}</div>
+                                <div className="bg-rose-50 px-4 py-3 border-b border-rose-100 flex items-center justify-between"><h3 className="font-bold text-rose-800 flex items-center gap-2 text-sm"><Icons.TrendingDown size={16}/> Saídas</h3><span className="text-xs font-bold text-rose-600 bg-white px-2 py-0.5 rounded-full border border-rose-200">{currentFilteredData.expenses.length}</span></div>
+                                <div className="divide-y divide-gray-50 p-2 max-h-[400px] overflow-y-auto">{currentFilteredData.expenses.map(t => (<div key={t.id} className="py-2 px-2 hover:bg-rose-50/50 rounded-lg transition-colors group"><div className="flex justify-between items-center mb-1"><div className="flex-1 min-w-0 pr-2"><p className="font-bold text-sm text-slate-700 truncate">{t.description}</p><p className="text-[10px] text-slate-400 truncate">{new Date(t.date+'T00:00:00').toLocaleDateString('pt-BR')} • {t.method}</p></div><div className="text-right shrink-0 whitespace-nowrap"><span className="font-bold text-rose-600 text-sm block">- {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(t.amount)}</span></div></div><div className="flex justify-between items-center mt-1"><span className="text-[9px] bg-slate-100 px-1.5 py-0.5 rounded text-slate-500 uppercase">{getBeneficiaryLabel(t.beneficiary)}</span><div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity"><button onClick={() => handleOpenModal(t)} className="text-slate-400 hover:text-emerald-600"><Icons.Pencil size={12} /></button><button onClick={() => setItemToDelete(t.id)} className="text-slate-400 hover:text-rose-500"><Icons.Trash2 size={12} /></button></div></div></div>))} {currentFilteredData.expenses.length === 0 && <p className="text-center text-xs text-slate-400 py-4 italic">Nenhuma saída neste período.</p>}</div>
                             </div>
                         </div>
                         
@@ -573,6 +667,7 @@
                                     <div>
                                         <label className="block text-xs font-bold text-slate-500 uppercase">Descrição</label>
                                         <input type="text" required className="w-full p-3 bg-slate-50 border rounded-xl" value={formData.description} onChange={(e) => setFormData({...formData, description: e.target.value})} />
+                                        <p className="text-[10px] text-emerald-600 mt-1">Preencha para tornar o relatório mensal mais preciso.</p>
                                     </div>
                                     <div className="grid grid-cols-2 gap-4">
                                         <div>
@@ -590,6 +685,7 @@
                                                 <option value="empresa">Empresa</option>
                                                 <option value="outro">Outro</option>
                                             </select>
+                                            <p className="text-[10px] text-emerald-600 mt-1">Selecione para tornar o relatório mensal mais preciso.</p>
                                         </div>
                                     </div>
                                     <div>
@@ -621,7 +717,7 @@
                             </div>
                         </div>
                     )}
-                    {showReport && (<ReportModal transactions={transactions} month={selectedMonth} onClose={() => setShowReport(false)} />)}
+                    {showReport && (<ReportModal transactions={filteredTransactions} periodLabel={getPeriodLabel()} onClose={() => setShowReport(false)} />)}
                     {showSettings && (<div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[60] flex items-center justify-center p-4 animate-fadeIn text-slate-800"><div className="bg-white rounded-2xl p-6 shadow-2xl max-w-sm w-full animate-scaleIn overflow-y-auto max-h-[90vh]"><div className="flex justify-between items-center mb-4"><h3 className="text-lg font-bold text-slate-800">Configurações</h3><button onClick={() => setShowSettings(false)} className="p-2 bg-gray-100 rounded-full"><Icons.X size={20}/></button></div><div className="bg-emerald-50 p-4 rounded-xl border border-emerald-100 mb-4"><p className="text-xs font-bold text-emerald-800 uppercase mb-1">{isPremium ? 'Licença Ativa (Device Locked)' : 'Versão Gratuita'}</p><div className="flex items-center gap-2 text-sm text-emerald-700 font-mono"><Icons.Smartphone size={16}/> <span>{deviceId}</span></div></div>{backupWarning && <div className="mb-4 p-3 bg-amber-50 border border-amber-200 rounded-xl flex items-center gap-3 animate-fadeIn"><div className="text-amber-600"><Icons.AlertOctagon size={24}/></div><div><p className="text-xs font-bold text-amber-700">Backup Recomendado</p><p className="text-[10px] text-amber-600">Seus dados ficam salvos neste navegador. Faça um backup.</p></div></div>}<div className="space-y-2"><button onClick={handleExportData} className="w-full p-3 border rounded-xl flex items-center gap-3 hover:bg-slate-50"><Icons.Download className="text-emerald-600"/> <span>Baixar Backup Completo</span> {!isPremium && <Icons.Lock size={14} className="ml-auto text-slate-300"/>}</button><button onClick={handleImportClick} className="w-full p-3 border rounded-xl flex items-center gap-3 hover:bg-slate-50"><Icons.Upload className="text-blue-600"/> <span>Restaurar Backup</span> {!isPremium && <Icons.Lock size={14} className="ml-auto text-slate-300"/>}</button>{isPremium && <button onClick={logout} className="w-full p-3 border border-rose-200 bg-rose-50 rounded-xl flex items-center gap-3 hover:bg-rose-100 mt-4 text-rose-700 font-bold"><Icons.LogOut className="text-rose-600"/> <span>Desativar Licença</span></button>}<input type="file" ref={fileInputRef} onChange={handleFileUpload} accept=".json" className="hidden" /></div></div></div>)}
                     {showPremiumModal && (<PremiumModal onActivate={unlockApp} deviceId={deviceId} onClose={() => setShowPremiumModal(false)} />)}
                     {pendingImportData && (<div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[70] flex items-center justify-center p-4 text-slate-800"><div className="bg-white rounded-2xl p-6 text-center shadow-2xl"><h3 className="text-lg font-bold mb-2">Confirmar Importação?</h3><p className="text-sm text-slate-500 mb-4">Isso substituirá todos os dados.</p><div className="flex gap-2"><button onClick={() => setPendingImportData(null)} className="flex-1 py-2 bg-slate-100 rounded">Cancelar</button><button onClick={confirmImport} className="flex-1 py-2 bg-blue-600 text-white rounded">Confirmar</button></div></div></div>)}
