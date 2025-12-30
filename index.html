@@ -26,18 +26,22 @@
         /* Animações */
         @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
         @keyframes pulse-soft { 0%, 100% { opacity: 1; } 50% { opacity: 0.8; } }
+        @keyframes slideUp { from { transform: translateY(100%); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
+        @keyframes scaleIn { from { transform: scale(0.9); opacity: 0; } to { transform: scale(1); opacity: 1; } }
         
         .animate-fadeIn { animation: fadeIn 0.6s cubic-bezier(0.16, 1, 0.3, 1); }
         .animate-pulse-soft { animation: pulse-soft 3s infinite; }
+        .animate-slideUp { animation: slideUp 0.4s ease-out; }
+        .animate-scaleIn { animation: scaleIn 0.3s ease-out; }
         
         /* Vidro e Efeitos */
         .bg-glass { background: rgba(30, 41, 59, 0.7); backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px); border: 1px solid rgba(255, 255, 255, 0.08); }
         
         /* Barra de Rolagem Personalizada */
-        #root::-webkit-scrollbar { width: 6px; }
-        #root::-webkit-scrollbar-track { background: transparent; }
-        #root::-webkit-scrollbar-thumb { background-color: #cbd5e1; border-radius: 20px; }
-        #root { scrollbar-width: thin; scrollbar-color: #cbd5e1 transparent; }
+        ::-webkit-scrollbar { width: 8px; height: 8px; }
+        ::-webkit-scrollbar-track { background: #f1f5f9; }
+        ::-webkit-scrollbar-thumb { background-color: #cbd5e1; border-radius: 20px; }
+        ::-webkit-scrollbar-thumb:hover { background-color: #94a3b8; }
         
         .no-scrollbar::-webkit-scrollbar { display: none; }
         .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
@@ -55,13 +59,13 @@
         .pt-safe { padding-top: env(safe-area-inset-top); }
     </style>
 </head>
-<body class="bg-slate-900 text-slate-200 font-sans antialiased selection:bg-emerald-500 selection:text-white h-screen overflow-hidden flex justify-center">
+<body class="bg-slate-900 text-slate-200 font-sans antialiased selection:bg-emerald-500 selection:text-white min-h-screen">
     
-    <div id="root" class="w-full max-w-lg h-full bg-slate-50 relative shadow-2xl overflow-y-auto"></div>
+    <!-- Ajuste do container principal para ser responsivo -->
+    <div id="root" class="w-full min-h-screen bg-slate-50 relative shadow-2xl mx-auto md:max-w-6xl md:my-8 md:rounded-3xl md:overflow-hidden md:min-h-[calc(100vh-4rem)]"></div>
 
     <script type="text/babel">
-        // --- CÓDIGO REACT ORIGINAL MANTIDO ---
-        // (Apenas a lógica do app foi preservada, sem alterações funcionais para garantir integridade)
+        // --- CÓDIGO REACT ---
         const { useState, useEffect, useMemo, useRef } = React;
         const SEU_WHATSAPP_VENDAS = "558899361992"; 
         const LICENSE_PRICE = "R$ 59,99";
@@ -91,7 +95,7 @@
             } catch (e) { return false; }
         };
 
-        // ... ÍCONES (Mantidos conforme original) ...
+        // ... ÍCONES ...
         const Icon = ({ children, className, size = 24 }) => (<svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}>{children}</svg>);
         const Icons = {
             Wallet: (p) => <Icon {...p}><path d="M21 12V7H5a2 2 0 0 1 0-4h14v4"/><path d="M3 5v14a2 2 0 0 0 2 2h16v-5"/><path d="M18 12a2 2 0 0 0 0 4h4v-4Z"/></Icon>,
@@ -310,9 +314,15 @@
             if (isChecking) return <div className="min-h-screen bg-slate-900 flex items-center justify-center text-white"><Icons.Wallet className="animate-bounce" size={40} /></div>;
 
             return (
-                <div className="min-h-screen bg-slate-50 pb-20 animate-fadeIn text-slate-800">
-                    <header className="bg-slate-900 text-white p-6 pb-24 rounded-b-[2.5rem] shadow-xl relative overflow-hidden">
+                <div className="bg-slate-50 pb-20 md:pb-0 animate-fadeIn text-slate-800 min-h-full">
+                    <header className="bg-slate-900 text-white p-6 pb-24 rounded-b-[2.5rem] md:rounded-t-3xl md:rounded-b-[2.5rem] shadow-xl relative overflow-hidden">
                         <div className="absolute top-0 right-0 p-4 opacity-10 pointer-events-none"><Icons.Wallet size={120} /></div>
+                        
+                        {/* Botão Novo Lançamento para Desktop (Topo) */}
+                        <div className="absolute top-6 left-6 hidden md:block z-50">
+                             <button onClick={() => handleOpenModal()} className="px-4 py-2 bg-emerald-500 hover:bg-emerald-600 text-white font-bold rounded-lg shadow-lg flex items-center gap-2 transition-transform active:scale-95"><Icons.Plus size={18} /> Novo Lançamento</button>
+                        </div>
+
                         <div className="absolute top-4 right-4 z-50 flex gap-2">
                              {!isPremium && <button onClick={() => setShowPremiumModal(true)} className="px-3 py-1.5 rounded-full bg-amber-500 hover:bg-amber-600 text-white text-xs font-bold shadow-lg flex items-center gap-1 animate-pulse-soft"><Icons.Crown size={14}/> <span>{transactions.length}/{FREE_LIMIT}</span></button>}
                             <button onClick={() => setShowSettings(true)} className={`p-2.5 rounded-full hover:bg-slate-700 transition-colors shadow-lg border flex items-center justify-center ${backupWarning ? 'bg-rose-500 border-rose-400 text-white animate-pulse-red' : 'bg-slate-800 text-slate-300 border-slate-700'}`}>{backupWarning ? <Icons.AlertOctagon size={20} /> : <Icons.Settings size={20} />}</button>
@@ -326,17 +336,17 @@
                         <div className="absolute bottom-2 left-0 w-full text-center"><p className="text-[9px] text-slate-500/80 flex items-center justify-center gap-1"><Icons.ShieldCheck size={10} /> 100% Privado & Seguro (LGPD)</p></div>
                     </header>
 
-                    <main className="px-4 -mt-16 relative z-20 max-w-lg mx-auto space-y-4">
-                        <div className="flex items-center gap-2 bg-white p-2 rounded-xl shadow-sm border border-gray-100 overflow-x-auto no-scrollbar">
+                    <main className="px-4 -mt-16 relative z-20 max-w-6xl mx-auto space-y-4">
+                        <div className="flex items-center gap-2 bg-white p-2 rounded-xl shadow-sm border border-gray-100 overflow-x-auto no-scrollbar md:max-w-md md:mx-auto">
                             <button onClick={() => setFilterMode('day')} className={`px-3 py-2 rounded-lg text-xs font-bold whitespace-nowrap transition-all ${filterMode === 'day' ? 'bg-slate-800 text-white' : 'text-slate-500'}`}>Hoje</button>
                             <button onClick={() => setFilterMode('week')} className={`px-3 py-2 rounded-lg text-xs font-bold whitespace-nowrap transition-all ${filterMode === 'week' ? 'bg-slate-800 text-white' : 'text-slate-500'}`}>Semana</button>
                             <div className={`flex items-center gap-2 px-3 py-2 rounded-lg border transition-all ${filterMode === 'month' ? 'border-slate-800' : 'border-transparent'}`}><span className="text-xs font-bold">Mês:</span><input type="month" value={selectedMonth} onChange={(e) => { setSelectedMonth(e.target.value); setFilterMode('month'); }} className="bg-transparent border-none text-sm font-bold w-full outline-none" /></div>
                             {filterMode === 'month' && <button onClick={() => isPremium ? setShowReport(true) : setShowPremiumModal(true)} className="p-2 bg-slate-800 text-white rounded-lg hover:bg-slate-700 shadow-md transition-colors relative"><Icons.FileText size={18} />{!isPremium && <div className="absolute -top-1 -right-1 bg-amber-500 rounded-full p-0.5"><Icons.Lock size={10} className="text-white"/></div>}</button>}
                         </div>
 
-                        {backupWarning && <div className="p-3 bg-amber-50 border border-amber-200 rounded-xl flex items-start gap-3 animate-fadeIn shadow-sm"><div className="text-amber-600 mt-1"><Icons.Database size={20}/></div><div><p className="text-xs font-bold text-amber-800">Backup de Segurança</p><p className="text-[10px] text-amber-700 leading-relaxed">Seus dados são armazenados localmente. Recomendamos baixar um backup regularmente.</p></div></div>}
+                        {backupWarning && <div className="p-3 bg-amber-50 border border-amber-200 rounded-xl flex items-start gap-3 animate-fadeIn shadow-sm max-w-lg mx-auto"><div className="text-amber-600 mt-1"><Icons.Database size={20}/></div><div><p className="text-xs font-bold text-amber-800">Backup de Segurança</p><p className="text-[10px] text-amber-700 leading-relaxed">Seus dados são armazenados localmente. Recomendamos baixar um backup regularmente.</p></div></div>}
 
-                        <div className="grid grid-cols-2 gap-3">
+                        <div className="grid grid-cols-2 gap-3 max-w-lg mx-auto">
                             <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-4 flex flex-col justify-between"><div className="flex items-center gap-2 mb-2"><div className="p-2 bg-emerald-100 rounded-full text-emerald-600"><Icons.TrendingUp size={16} /></div><span className="text-xs font-semibold text-slate-500">Entradas</span></div><span className="text-lg font-bold text-emerald-600">{new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(stats.income)}</span></div>
                             <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-4 flex flex-col justify-between"><div className="flex items-center gap-2 mb-2"><div className="p-2 bg-rose-100 rounded-full text-rose-600"><Icons.TrendingDown size={16} /></div><span className="text-xs font-semibold text-slate-500">Saídas</span></div><span className="text-lg font-bold text-rose-600">{new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(stats.expense)}</span></div>
                         </div>
@@ -344,11 +354,11 @@
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                             <div className="bg-white rounded-xl shadow-md border border-gray-100 overflow-hidden h-fit">
                                 <div className="bg-emerald-50 px-4 py-3 border-b border-emerald-100 flex items-center justify-between"><h3 className="font-bold text-emerald-800 flex items-center gap-2 text-sm"><Icons.TrendingUp size={16}/> Entradas</h3><span className="text-xs font-bold text-emerald-600 bg-white px-2 py-0.5 rounded-full border border-emerald-200">{filteredTransactions.incomes.length}</span></div>
-                                <div className="divide-y divide-gray-50 p-2">{filteredTransactions.incomes.map(t => (<div key={t.id} className="py-2 px-2 hover:bg-emerald-50/50 rounded-lg transition-colors group"><div className="flex justify-between items-center mb-1"><div className="flex-1 min-w-0 pr-2"><p className="font-bold text-sm text-slate-700 truncate">{t.description}</p><p className="text-[10px] text-slate-400 truncate">{new Date(t.date+'T00:00:00').toLocaleDateString('pt-BR')} • {t.method}</p></div><div className="text-right shrink-0 whitespace-nowrap"><span className="font-bold text-emerald-600 text-sm block">{new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(t.amount)}</span></div></div><div className="flex justify-between items-center mt-1"><span className="text-[9px] bg-slate-100 px-1.5 py-0.5 rounded text-slate-500 uppercase">{getBeneficiaryLabel(t.beneficiary)}</span><div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity"><button onClick={() => handleOpenModal(t)} className="text-slate-400 hover:text-emerald-600"><Icons.Pencil size={12} /></button><button onClick={() => setItemToDelete(t.id)} className="text-slate-400 hover:text-rose-500"><Icons.Trash2 size={12} /></button></div></div></div>))} {filteredTransactions.incomes.length === 0 && <p className="text-center text-xs text-slate-400 py-4 italic">Nenhuma entrada.</p>}</div>
+                                <div className="divide-y divide-gray-50 p-2 max-h-[400px] overflow-y-auto">{filteredTransactions.incomes.map(t => (<div key={t.id} className="py-2 px-2 hover:bg-emerald-50/50 rounded-lg transition-colors group"><div className="flex justify-between items-center mb-1"><div className="flex-1 min-w-0 pr-2"><p className="font-bold text-sm text-slate-700 truncate">{t.description}</p><p className="text-[10px] text-slate-400 truncate">{new Date(t.date+'T00:00:00').toLocaleDateString('pt-BR')} • {t.method}</p></div><div className="text-right shrink-0 whitespace-nowrap"><span className="font-bold text-emerald-600 text-sm block">{new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(t.amount)}</span></div></div><div className="flex justify-between items-center mt-1"><span className="text-[9px] bg-slate-100 px-1.5 py-0.5 rounded text-slate-500 uppercase">{getBeneficiaryLabel(t.beneficiary)}</span><div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity"><button onClick={() => handleOpenModal(t)} className="text-slate-400 hover:text-emerald-600"><Icons.Pencil size={12} /></button><button onClick={() => setItemToDelete(t.id)} className="text-slate-400 hover:text-rose-500"><Icons.Trash2 size={12} /></button></div></div></div>))} {filteredTransactions.incomes.length === 0 && <p className="text-center text-xs text-slate-400 py-4 italic">Nenhuma entrada.</p>}</div>
                             </div>
                             <div className="bg-white rounded-xl shadow-md border border-gray-100 overflow-hidden h-fit">
                                 <div className="bg-rose-50 px-4 py-3 border-b border-rose-100 flex items-center justify-between"><h3 className="font-bold text-rose-800 flex items-center gap-2 text-sm"><Icons.TrendingDown size={16}/> Saídas</h3><span className="text-xs font-bold text-rose-600 bg-white px-2 py-0.5 rounded-full border border-rose-200">{filteredTransactions.expenses.length}</span></div>
-                                <div className="divide-y divide-gray-50 p-2">{filteredTransactions.expenses.map(t => (<div key={t.id} className="py-2 px-2 hover:bg-rose-50/50 rounded-lg transition-colors group"><div className="flex justify-between items-center mb-1"><div className="flex-1 min-w-0 pr-2"><p className="font-bold text-sm text-slate-700 truncate">{t.description}</p><p className="text-[10px] text-slate-400 truncate">{new Date(t.date+'T00:00:00').toLocaleDateString('pt-BR')} • {t.method}</p></div><div className="text-right shrink-0 whitespace-nowrap"><span className="font-bold text-rose-600 text-sm block">- {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(t.amount)}</span></div></div><div className="flex justify-between items-center mt-1"><span className="text-[9px] bg-slate-100 px-1.5 py-0.5 rounded text-slate-500 uppercase">{getBeneficiaryLabel(t.beneficiary)}</span><div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity"><button onClick={() => handleOpenModal(t)} className="text-slate-400 hover:text-emerald-600"><Icons.Pencil size={12} /></button><button onClick={() => setItemToDelete(t.id)} className="text-slate-400 hover:text-rose-500"><Icons.Trash2 size={12} /></button></div></div></div>))} {filteredTransactions.expenses.length === 0 && <p className="text-center text-xs text-slate-400 py-4 italic">Nenhuma saída.</p>}</div>
+                                <div className="divide-y divide-gray-50 p-2 max-h-[400px] overflow-y-auto">{filteredTransactions.expenses.map(t => (<div key={t.id} className="py-2 px-2 hover:bg-rose-50/50 rounded-lg transition-colors group"><div className="flex justify-between items-center mb-1"><div className="flex-1 min-w-0 pr-2"><p className="font-bold text-sm text-slate-700 truncate">{t.description}</p><p className="text-[10px] text-slate-400 truncate">{new Date(t.date+'T00:00:00').toLocaleDateString('pt-BR')} • {t.method}</p></div><div className="text-right shrink-0 whitespace-nowrap"><span className="font-bold text-rose-600 text-sm block">- {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(t.amount)}</span></div></div><div className="flex justify-between items-center mt-1"><span className="text-[9px] bg-slate-100 px-1.5 py-0.5 rounded text-slate-500 uppercase">{getBeneficiaryLabel(t.beneficiary)}</span><div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity"><button onClick={() => handleOpenModal(t)} className="text-slate-400 hover:text-emerald-600"><Icons.Pencil size={12} /></button><button onClick={() => setItemToDelete(t.id)} className="text-slate-400 hover:text-rose-500"><Icons.Trash2 size={12} /></button></div></div></div>))} {filteredTransactions.expenses.length === 0 && <p className="text-center text-xs text-slate-400 py-4 italic">Nenhuma saída.</p>}</div>
                             </div>
                         </div>
                         
@@ -356,10 +366,19 @@
                             <p className="font-bold mb-1">AVISO LEGAL DE DIREITOS AUTORAIS</p>
                             <p>© 2025 Maria Jaqueline da Silva Pereira. Todos os direitos reservados.</p>
                         </div>
-                        <div className="h-20"></div>
+                        <div className="h-20 md:hidden"></div>
                     </main>
 
-                    <nav className="fixed bottom-0 w-full bg-white border-t border-gray-100 pb-2 z-30 shadow-[0_-5px_15px_rgba(0,0,0,0.02)]"><div className="flex justify-center items-end max-w-lg mx-auto px-8 h-16"><div className="relative -top-5"><button onClick={() => handleOpenModal()} className="bg-slate-800 text-white p-4 rounded-full shadow-lg hover:bg-slate-700 transition-transform active:scale-95 border-4 border-slate-50"><Icons.Plus size={32} /></button></div></div></nav>
+                    {/* Barra Inferior (Visível APENAS no Mobile) */}
+                    <nav className="fixed bottom-0 w-full bg-white border-t border-gray-100 pb-2 z-30 shadow-[0_-5px_15px_rgba(0,0,0,0.02)] md:hidden">
+                        <div className="flex justify-center items-end max-w-lg mx-auto px-8 h-16">
+                            <div className="relative -top-5">
+                                <button onClick={() => handleOpenModal()} className="bg-slate-800 text-white p-4 rounded-full shadow-lg hover:bg-slate-700 transition-transform active:scale-95 border-4 border-slate-50">
+                                    <Icons.Plus size={32} />
+                                </button>
+                            </div>
+                        </div>
+                    </nav>
 
                     {showModal && (<div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-end sm:items-center justify-center animate-fadeIn"><div className="bg-white w-full max-w-lg rounded-t-3xl sm:rounded-2xl p-6 shadow-2xl animate-slideUp max-h-[90vh] overflow-y-auto"><div className="flex justify-between items-center mb-6"><h2 className="text-xl font-bold text-slate-800">{editingId ? 'Editar' : 'Novo Lançamento'}</h2><button onClick={() => setShowModal(false)} className="p-2 bg-gray-100 rounded-full"><Icons.X size={20} /></button></div><form onSubmit={handleSaveTransaction} className="space-y-4"><div className="flex bg-gray-100 p-1 rounded-xl"><button type="button" onClick={() => setFormData({...formData, type: 'expense'})} className={`flex-1 py-2 rounded-lg font-medium text-sm flex items-center justify-center gap-2 transition-all ${formData.type === 'expense' ? 'bg-white text-rose-600 shadow-sm' : 'text-gray-500'}`}><Icons.TrendingDown size={16} /> Saída</button><button type="button" onClick={() => setFormData({...formData, type: 'income'})} className={`flex-1 py-2 rounded-lg font-medium text-sm flex items-center justify-center gap-2 transition-all ${formData.type === 'income' ? 'bg-white text-emerald-600 shadow-sm' : 'text-gray-500'}`}><Icons.TrendingUp size={16} /> Entrada</button></div><div><label className="block text-xs font-bold text-slate-500 uppercase">Valor</label><input type="number" step="0.01" required className="w-full p-3 bg-slate-50 border rounded-xl text-lg font-bold" value={formData.amount} onChange={(e) => setFormData({...formData, amount: e.target.value})} /></div><div><label className="block text-xs font-bold text-slate-500 uppercase">Descrição</label><input type="text" required className="w-full p-3 bg-slate-50 border rounded-xl" value={formData.description} onChange={(e) => setFormData({...formData, description: e.target.value})} /></div><div className="grid grid-cols-2 gap-4"><div><label className="block text-xs font-bold text-slate-500 uppercase">Data</label><input type="date" required className="w-full p-3 bg-slate-50 border rounded-xl" value={formData.date} onChange={(e) => setFormData({...formData, date: e.target.value})} /></div><div><label className="block text-xs font-bold text-slate-500 uppercase">Referente</label><select className="w-full p-3 bg-slate-50 border rounded-xl" value={formData.beneficiary} onChange={(e) => setFormData({...formData, beneficiary: e.target.value})}><option value="eu">Eu</option><option value="esposa">Esposa</option><option value="filhos">Filhos</option><option value="pais">Pais</option><option value="irmaos">Irmãos</option><option value="empresa">Empresa</option><option value="outro">Outro</option></select></div></div><div><label className="block text-xs font-bold text-slate-500 uppercase">Método</label><select className="w-full p-3 bg-slate-50 border rounded-xl" value={formData.method} onChange={(e) => setFormData({...formData, method: e.target.value})}><option value="pix">Pix</option><option value="money">Dinheiro</option><option value="card_credit">Crédito</option><option value="card_debit">Débito</option><option value="cheque">Cheque</option></select></div><div><label className="block text-xs font-bold text-slate-500 uppercase">Infos</label><textarea className="w-full p-3 bg-slate-50 border rounded-xl" value={formData.additionalInfo} onChange={(e) => setFormData({...formData, additionalInfo: e.target.value})} /></div><button type="submit" className={`w-full py-3 rounded-lg font-bold text-white shadow-md ${formData.type === 'income' ? 'bg-emerald-600' : 'bg-rose-500'}`}>Salvar</button></form></div></div>)}
                     {showReport && (<ReportModal transactions={transactions} month={selectedMonth} onClose={() => setShowReport(false)} />)}
