@@ -8,6 +8,10 @@
     <title>Nexus Finanças</title>
     <meta name="description" content="Controle financeiro inteligente, seguro e offline. Gerencie suas finanças pessoais com facilidade.">
     <meta name="theme-color" content="#0f172a">
+    <link rel="manifest" href="manifest.json"> <!-- Placeholder para validação PWA -->
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <link rel="apple-touch-icon" href="icon-192.png">
     
     <!-- Estilos -->
     <script src="https://cdn.tailwindcss.com"></script>
@@ -29,11 +33,13 @@
         @keyframes pulse-soft { 0%, 100% { opacity: 1; } 50% { opacity: 0.8; } }
         @keyframes slideUp { from { transform: translateY(100%); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
         @keyframes scaleIn { from { transform: scale(0.9); opacity: 0; } to { transform: scale(1); opacity: 1; } }
+        @keyframes shake { 0%, 100% {transform: translateX(0);} 10%, 30%, 50%, 70%, 90% {transform: translateX(-4px);} 20%, 40%, 60%, 80% {transform: translateX(4px);} }
         
         .animate-fadeIn { animation: fadeIn 0.6s cubic-bezier(0.16, 1, 0.3, 1); }
         .animate-pulse-soft { animation: pulse-soft 3s infinite; }
         .animate-slideUp { animation: slideUp 0.4s ease-out; }
         .animate-scaleIn { animation: scaleIn 0.3s ease-out; }
+        .animate-shake { animation: shake 0.5s ease-in-out; }
         
         /* Vidro e Efeitos */
         .bg-glass { background: rgba(30, 41, 59, 0.7); backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px); border: 1px solid rgba(255, 255, 255, 0.08); }
@@ -66,12 +72,136 @@
     <div id="root" class="w-full min-h-screen bg-slate-50 relative shadow-2xl mx-auto md:max-w-6xl md:my-8 md:rounded-3xl md:overflow-hidden md:min-h-[calc(100vh-4rem)]"></div>
 
     <script type="text/babel">
+        // --- OFUSCAÇÃO DE DADOS SENSÍVEIS (Classe Segura) ---
+        // Esta classe encapsula a lógica de licença para dificultar a edição por iniciantes.
+        const _0xSec = (function() {
+            // "SILVACE-SECRET-2025" encoded in Base64 to hide string literal
+            const _0x1a = atob("U0lMVkFDRS1TRUNSRVQtMjAyNQ=="); 
+            const _0x1b = 10800000; // 3 Hours in ms
+            
+            return {
+                // Generate Device Hash
+                gId: () => {
+                    let id = localStorage.getItem('_nx_did');
+                    if (!id) {
+                        id = Math.random().toString(36).substring(2, 6).toUpperCase();
+                        localStorage.setItem('_nx_did', id);
+                    }
+                    return id;
+                },
+                // Verify Key: Format NX-{Base64Payload}-{Signature}
+                vK: (key, dId) => {
+                    try {
+                        if (!key.startsWith('NX-')) return { valid: false, msg: 'Formato inválido' };
+                        const parts = key.split('-');
+                        if (parts.length !== 3) return { valid: false, msg: 'Chave corrompida' };
+                        
+                        const payloadB64 = parts[1];
+                        const signature = parts[2];
+                        const payload = atob(payloadB64); // "TIMESTAMP-TYPE"
+                        
+                        // Recalculate Signature
+                        const dataToSign = payload + dId + _0x1a;
+                        let hash = 0;
+                        for (let i = 0; i < dataToSign.length; i++) { hash = ((hash << 5) - hash) + dataToSign.charCodeAt(i); hash |= 0; }
+                        const expectedSig = Math.abs(hash).toString(16).toUpperCase().padStart(8, '0');
+                        
+                        if (signature !== expectedSig) return { valid: false, msg: 'Assinatura inválida (Dispositivo incorreto)' };
+                        
+                        // Check Time
+                        const expTs = parseInt(payload.split('-')[0]);
+                        if (Date.now() > expTs) return { valid: false, msg: 'Licença expirada', expired: true };
+                        
+                        return { valid: true, expires: expTs };
+                    } catch(e) { return { valid: false, msg: 'Erro de verificação' }; }
+                },
+                // Check Trial Status
+                cT: () => {
+                    let start = localStorage.getItem('_nx_ts');
+                    if (!start) {
+                        start = Date.now().toString();
+                        localStorage.setItem('_nx_ts', start);
+                    }
+                    const diff = Date.now() - parseInt(start);
+                    const remaining = Math.max(0, _0x1b - diff);
+                    return { active: diff < _0x1b, remaining: remaining };
+                }
+            };
+        })();
+
+        // --- GERENCIADOR DE INDEXEDDB ---
+        // Substitui o localStorage para permitir salvamento de dados massivos sem limites de 5MB
+        const IDBManager = {
+            dbName: 'NexusDB',
+            storeName: 'transactions',
+            version: 1,
+            
+            async open() {
+                return new Promise((resolve, reject) => {
+                    const request = indexedDB.open(this.dbName, this.version);
+                    request.onerror = () => reject('Erro ao abrir DB');
+                    request.onsuccess = (e) => resolve(e.target.result);
+                    request.onupgradeneeded = (e) => {
+                        const db = e.target.result;
+                        if (!db.objectStoreNames.contains(this.storeName)) {
+                            db.createObjectStore(this.storeName, { keyPath: 'id' });
+                        }
+                    };
+                });
+            },
+            
+            async getAll() {
+                const db = await this.open();
+                return new Promise((resolve, reject) => {
+                    const transaction = db.transaction([this.storeName], 'readonly');
+                    const store = transaction.objectStore(this.storeName);
+                    const request = store.getAll();
+                    request.onsuccess = () => resolve(request.result || []);
+                    request.onerror = () => reject('Erro ao ler dados');
+                });
+            },
+            
+            async save(item) {
+                const db = await this.open();
+                return new Promise((resolve, reject) => {
+                    const transaction = db.transaction([this.storeName], 'readwrite');
+                    const store = transaction.objectStore(this.storeName);
+                    store.put(item);
+                    transaction.oncomplete = () => resolve();
+                    transaction.onerror = () => reject('Erro ao salvar');
+                });
+            },
+
+            async delete(id) {
+                const db = await this.open();
+                return new Promise((resolve, reject) => {
+                    const transaction = db.transaction([this.storeName], 'readwrite');
+                    const store = transaction.objectStore(this.storeName);
+                    store.delete(id);
+                    transaction.oncomplete = () => resolve();
+                });
+            },
+            
+            async bulkSave(items) {
+                const db = await this.open();
+                return new Promise((resolve, reject) => {
+                    const transaction = db.transaction([this.storeName], 'readwrite');
+                    const store = transaction.objectStore(this.storeName);
+                    // Clear first ensures full sync
+                    store.clear().onsuccess = () => {
+                        items.forEach(item => store.put(item));
+                    };
+                    transaction.oncomplete = () => resolve();
+                    transaction.onerror = () => reject('Erro ao salvar em massa');
+                });
+            }
+        };
+
         // --- CÓDIGO REACT ---
         const { useState, useEffect, useMemo, useRef } = React;
         const SEU_WHATSAPP_VENDAS = "558899361992"; 
         const LICENSE_PRICE = "R$ 59,99";
-        const SALT = "SILVACE-SECRET-2025"; 
-        const FREE_LIMIT = 10; 
+        const FREE_LIMIT = 999999; // Limite removido, controlado por tempo agora
 
         // Lista de Categorias
         const CATEGORIES = [
@@ -104,29 +234,6 @@
             'outro': 'Outro'
         };
 
-        const getDeviceId = () => {
-            let id = localStorage.getItem('nexus_device_id');
-            if (!id) {
-                id = Math.random().toString(36).substring(2, 6).toUpperCase();
-                localStorage.setItem('nexus_device_id', id);
-            }
-            return id;
-        };
-
-        const verifyUniqueKey = (key, deviceId) => {
-            try {
-                if (!key || !deviceId) return false;
-                const parts = key.trim().toUpperCase().split('-');
-                if (parts.length !== 4) return false;
-                const signature = parts[3];
-                let combined = parts[1] + parts[2] + deviceId + SALT;
-                let hash = 0;
-                for (let i = 0; i < combined.length; i++) { hash = ((hash << 5) - hash) + combined.charCodeAt(i); hash |= 0; }
-                const expectedSignature = Math.abs(hash).toString(16).substring(0, 4).toUpperCase().padStart(4, '0');
-                return signature === expectedSignature;
-            } catch (e) { return false; }
-        };
-
         // ... ÍCONES ...
         const Icon = ({ children, className, size = 24 }) => (<svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}>{children}</svg>);
         const Icons = {
@@ -154,19 +261,55 @@
             Database: (p) => <Icon {...p}><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3"/><path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"/></Icon>,
             Infinity: (p) => <Icon {...p}><path d="M12 12c-2-2.67-4-4-6-4a4 4 0 1 0 0 8c2 0 4-1.33 6-4Zm0 0c2 2.67 4 4 6 4a4 4 0 1 0 0-8c-2 0-4 1.33-6 4Z"/></Icon>,
             AlertOctagon: (p) => <Icon {...p}><polygon points="7.86 2 16.14 2 22 7.86 22 16.14 16.14 22 7.86 22 2 16.14 2 7.86 7.86 2"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></Icon>,
-            ShoppingBag: (p) => <Icon {...p}><path d="M6 2 3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4Z"/><line x1="3" y1="6" x2="21" y2="6"/><path d="M16 10a4 4 0 0 1-8 0"/></Icon>
+            ShoppingBag: (p) => <Icon {...p}><path d="M6 2 3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4Z"/><line x1="3" y1="6" x2="21" y2="6"/><path d="M16 10a4 4 0 0 1-8 0"/></Icon>,
+            Share: (p) => <Icon {...p}><path d="M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8"/><polyline points="16 6 12 2 8 6"/><line x1="12" y1="2" x2="12" y2="15"/></Icon>,
+            Menu: (p) => <Icon {...p}><line x1="4" y1="12" x2="20" y2="12"/><line x1="4" y1="6" x2="20" y2="6"/><line x1="4" y1="18" x2="20" y2="18"/></Icon>
         };
+
+        const InstallModal = ({ onClose }) => (
+            <div className="fixed inset-0 bg-slate-900/90 backdrop-blur-sm z-[200] flex items-center justify-center p-4 animate-fadeIn">
+                <div className="bg-white rounded-2xl p-6 shadow-2xl max-w-sm w-full relative">
+                    <button onClick={onClose} className="absolute top-4 right-4 text-slate-400 hover:text-slate-600"><Icons.X size={20}/></button>
+                    <div className="text-center mb-4">
+                        <div className="w-16 h-16 bg-blue-100 rounded-2xl flex items-center justify-center mx-auto mb-4 text-blue-600">
+                            <Icons.Download size={32}/>
+                        </div>
+                        <h3 className="text-xl font-bold text-slate-800">Instalar Aplicativo</h3>
+                        <p className="text-sm text-slate-500 mt-2">Para ter a melhor experiência, adicione este app à sua tela inicial.</p>
+                    </div>
+                    
+                    <div className="space-y-4 text-sm text-slate-600 bg-slate-50 p-4 rounded-xl border border-slate-100">
+                        <div className="flex items-start gap-3">
+                            <div className="bg-slate-200 p-1.5 rounded-lg text-slate-700 shrink-0"><Icons.Share size={16}/></div>
+                            <div>
+                                <p className="font-bold text-slate-800">No iPhone / iPad (Safari)</p>
+                                <p>Toque em <span className="font-bold">Compartilhar</span> e depois em <span className="font-bold">"Adicionar à Tela de Início"</span>.</p>
+                            </div>
+                        </div>
+                        <div className="border-t border-slate-200 my-2"></div>
+                        <div className="flex items-start gap-3">
+                            <div className="bg-slate-200 p-1.5 rounded-lg text-slate-700 shrink-0"><Icons.Menu size={16}/></div>
+                            <div>
+                                <p className="font-bold text-slate-800">No Android (Chrome)</p>
+                                <p>Toque no menu (3 pontos) e selecione <span className="font-bold">"Instalar aplicativo"</span> ou <span className="font-bold">"Adicionar à tela inicial"</span>.</p>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <button onClick={onClose} className="w-full mt-6 py-3 bg-blue-600 text-white rounded-xl font-bold hover:bg-blue-700">Entendi</button>
+                </div>
+            </div>
+        );
 
         const ReportModal = ({ transactions, periodLabel, onClose }) => {
             const [isGenerating, setIsGenerating] = useState(false);
-            const [statementFilter, setStatementFilter] = useState('all'); // Novo estado para filtro de extrato
+            const [statementFilter, setStatementFilter] = useState('all'); 
             const incomeChartRef = useRef(null);
             const expenseChartRef = useRef(null);
             const methodChartRef = useRef(null); 
             const beneficiaryChartRef = useRef(null);
 
             const reportData = useMemo(() => {
-                // Transactions are already filtered by the parent (App)
                 const stats = transactions.reduce((acc, curr) => {
                     curr.type === 'income' ? acc.income += curr.amount : acc.expense += curr.amount;
                     
@@ -325,7 +468,6 @@
                                 </div>
                             </div>
                             
-                            {/* Gráficos de Método e Referente */}
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8 page-break-inside-avoid">
                                 <div className="bg-slate-50 p-4 rounded-xl border border-slate-100">
                                     <h4 className="text-sm font-bold text-blue-700 mb-2 uppercase flex items-center gap-2"><Icons.Wallet size={16}/> Movim. por Método</h4>
@@ -346,8 +488,6 @@
                             <div className="mt-8">
                                 <div className="flex justify-between items-center border-b-2 border-slate-200 pb-2 mb-4">
                                     <h3 className="text-sm font-bold text-slate-700 uppercase">Extrato Detalhado</h3>
-                                    
-                                    {/* Filtro de Extrato - Ignorado na impressão/PDF se desejado, mas mantido aqui para interatividade */}
                                     <div className="flex bg-slate-100 rounded-lg p-1 gap-1" data-html2canvas-ignore="true">
                                         <button onClick={() => setStatementFilter('all')} className={`px-3 py-1 rounded-md text-[10px] font-bold transition-all ${statementFilter === 'all' ? 'bg-slate-800 text-white shadow' : 'text-slate-500 hover:bg-slate-200'}`}>Todos</button>
                                         <button onClick={() => setStatementFilter('income')} className={`px-3 py-1 rounded-md text-[10px] font-bold transition-all ${statementFilter === 'income' ? 'bg-emerald-500 text-white shadow' : 'text-slate-500 hover:bg-slate-200'}`}>Entradas</button>
@@ -371,10 +511,9 @@
             const handleBuyClick = () => { window.open(`https://wa.me/${SEU_WHATSAPP_VENDAS}?text=${encodeURIComponent(`Olá! Quero comprar a licença do Nexus Finanças.\n\nMeu Código de Instalação é: *${deviceId}*`)}`, '_blank'); };
             
             const copyId = () => {
-                // Fallback para ambientes onde navigator.clipboard é bloqueado (como iframes)
                 const textArea = document.createElement("textarea");
                 textArea.value = deviceId;
-                textArea.style.position = "fixed"; // Evitar scroll
+                textArea.style.position = "fixed"; 
                 textArea.style.opacity = "0";
                 document.body.appendChild(textArea);
                 textArea.focus();
@@ -388,19 +527,40 @@
                 document.body.removeChild(textArea);
             };
 
-            const handleActivate = () => { if(!key.trim()) { setError('Digite a chave recebida.'); return; } setLoading(true); setError(''); setTimeout(() => { if (verifyUniqueKey(key, deviceId)) { onActivate(key.trim()); } else { setError('Chave inválida para este aparelho.'); setLoading(false); } }, 800); };
+            const handleActivate = () => { 
+                if(!key.trim()) { setError('Digite a chave recebida.'); return; } 
+                setLoading(true); setError(''); 
+                setTimeout(() => { 
+                    // OFUSCAÇÃO: Verifica usando a classe segura
+                    const result = _0xSec.vK(key.trim(), deviceId);
+                    if (result.valid) { 
+                        onActivate(key.trim()); 
+                    } else { 
+                        setError(result.msg || 'Chave inválida para este aparelho.'); 
+                        setLoading(false); 
+                    } 
+                }, 1000); 
+            };
 
             return (
-                <div className="fixed inset-0 bg-slate-900/90 backdrop-blur-sm z-[200] flex items-center justify-center p-4">
+                <div className="fixed inset-0 bg-slate-900/95 backdrop-blur-md z-[200] flex items-center justify-center p-4">
                     <div className="bg-gradient-to-br from-slate-800 to-slate-900 w-full max-w-md rounded-3xl p-6 shadow-2xl animate-scaleIn text-white relative border border-slate-700/50">
-                        <button onClick={onClose} className="absolute top-4 right-4 p-2 hover:bg-white/10 rounded-full transition-colors"><Icons.X size={20}/></button>
-                        <div className="text-center mb-6"><div className="inline-block p-3 bg-emerald-500/20 rounded-2xl mb-4 text-emerald-400 shadow-lg shadow-emerald-900/20"><Icons.Crown size={48} /></div><h2 className="text-2xl font-bold mb-1">Versão Ilimitada</h2><p className="text-slate-400 text-sm">Você atingiu o limite de teste gratuito.</p></div>
+                        {/* Removido o botão de fechar quando o trial expira para forçar ativação */}
+                        {/* <button onClick={onClose} className="absolute top-4 right-4 p-2 hover:bg-white/10 rounded-full transition-colors"><Icons.X size={20}/></button> */}
+                        
+                        <div className="text-center mb-6">
+                            <div className="inline-block p-4 bg-emerald-500/20 rounded-full mb-4 text-emerald-400 shadow-lg shadow-emerald-900/20 animate-pulse-soft">
+                                <Icons.Lock size={48} />
+                            </div>
+                            <h2 className="text-2xl font-bold mb-1">Período de Teste Encerrado</h2>
+                            <p className="text-slate-400 text-sm">O modo gratuito de 3 horas expirou. Para continuar usando todas as funções e acessar seus dados, ative sua licença.</p>
+                        </div>
                         <div className="mb-6 bg-slate-800/80 p-4 rounded-xl border border-slate-600/50">
                             <p className="text-[10px] text-slate-400 uppercase tracking-wider font-bold mb-2">Seu ID de Instalação</p>
-                            <div className="flex items-center gap-2 mb-3"><code className="flex-1 bg-slate-900/80 p-2 rounded-lg font-mono text-center text-emerald-400 font-bold border border-slate-700">{deviceId}</code><button onClick={copyId} className="p-2 bg-slate-700 hover:bg-slate-600 rounded-lg text-white transition-colors"><Icons.Copy size={18}/></button></div>
-                             <button onClick={handleBuyClick} className="w-full py-3 bg-gradient-to-r from-emerald-600 to-teal-500 hover:from-emerald-500 hover:to-teal-400 rounded-xl font-bold text-white shadow-lg shadow-emerald-900/20 flex items-center justify-center gap-2 transition-transform active:scale-95"><Icons.MessageCircle size={20} /> Comprar Licença ({LICENSE_PRICE})</button>
+                            <div className="flex items-center gap-2 mb-3"><code className="flex-1 bg-slate-900/80 p-2 rounded-lg font-mono text-center text-emerald-400 font-bold border border-slate-700 select-all">{deviceId}</code><button onClick={copyId} className="p-2 bg-slate-700 hover:bg-slate-600 rounded-lg text-white transition-colors"><Icons.Copy size={18}/></button></div>
+                             <button onClick={handleBuyClick} className="w-full py-3 bg-gradient-to-r from-emerald-600 to-teal-500 hover:from-emerald-500 hover:to-teal-400 rounded-xl font-bold text-white shadow-lg shadow-emerald-900/20 flex items-center justify-center gap-2 transition-transform active:scale-95"><Icons.MessageCircle size={20} /> Adquirir Licença ({LICENSE_PRICE})</button>
                         </div>
-                        <div className="border-t border-slate-700 pt-4"><p className="text-xs text-slate-400 mb-2 text-center">Já tem a chave?</p><div className="flex gap-2"><input type="text" placeholder="XXXX-XXXX-XXXX-XXXX" className="flex-1 bg-slate-900/50 border border-slate-600 rounded-lg px-3 text-sm text-white focus:outline-none focus:border-emerald-500 uppercase font-mono" value={key} onChange={(e) => setKey(e.target.value)} /><button onClick={handleActivate} disabled={loading} className="px-4 py-2 bg-slate-700 hover:bg-white hover:text-slate-900 rounded-lg font-bold text-white text-xs transition-colors disabled:opacity-50">{loading ? '...' : 'VALIDAR'}</button></div>{error && <p className="text-rose-400 text-xs mt-2 text-center">{error}</p>}</div>
+                        <div className="border-t border-slate-700 pt-4"><p className="text-xs text-slate-400 mb-2 text-center">Já tem a chave?</p><div className="flex gap-2"><input type="text" placeholder="Cole sua licença aqui..." className="flex-1 bg-slate-900/50 border border-slate-600 rounded-lg px-3 text-sm text-white focus:outline-none focus:border-emerald-500 font-mono" value={key} onChange={(e) => setKey(e.target.value)} /><button onClick={handleActivate} disabled={loading} className="px-4 py-2 bg-slate-700 hover:bg-white hover:text-slate-900 rounded-lg font-bold text-white text-xs transition-colors disabled:opacity-50">{loading ? '...' : 'ATIVAR'}</button></div>{error && <p className="text-rose-400 text-xs mt-2 text-center font-bold bg-rose-500/10 py-1 rounded">{error}</p>}</div>
                     </div>
                 </div>
             );
@@ -408,6 +568,10 @@
 
         function App() {
             const [isPremium, setIsPremium] = useState(false);
+            const [trialActive, setTrialActive] = useState(true);
+            const [trialRemaining, setTrialRemaining] = useState(0);
+            const [expirationDate, setExpirationDate] = useState(null);
+            
             const [isChecking, setIsChecking] = useState(true);
             const [deviceId, setDeviceId] = useState('');
             const [backupWarning, setBackupWarning] = useState(false);
@@ -415,49 +579,124 @@
             const [showSettings, setShowSettings] = useState(false);
             const [showReport, setShowReport] = useState(false);
             const [showPremiumModal, setShowPremiumModal] = useState(false);
+            const [showInstallModal, setShowInstallModal] = useState(false); // Modal de instruções manuais
             const [transactions, setTransactions] = useState([]);
             const fileInputRef = useRef(null);
             const [saveStatus, setSaveStatus] = useState('idle');
             const [pendingImportData, setPendingImportData] = useState(null);
+            const [installPrompt, setInstallPrompt] = useState(null);
+            const [isAppInstalled, setIsAppInstalled] = useState(false);
             
-            // Novos estados para filtro
-            const [viewType, setViewType] = useState('monthly'); // 'daily', 'weekly', 'monthly', 'yearly'
-            const [referenceDate, setReferenceDate] = useState(new Date().toISOString().slice(0, 10)); // YYYY-MM-DD
+            const [viewType, setViewType] = useState('monthly');
+            const [referenceDate, setReferenceDate] = useState(new Date().toISOString().slice(0, 10));
 
             const [editingId, setEditingId] = useState(null);
             const [itemToDelete, setItemToDelete] = useState(null);
             const [formData, setFormData] = useState({ description: '', amount: '', type: 'expense', date: new Date().toISOString().split('T')[0], method: '', beneficiary: 'eu', category: '', additionalInfo: '' });
             
-            // Novos estados para o Módulo de Feira
             const [isMarketMode, setIsMarketMode] = useState(false);
             const [marketItems, setMarketItems] = useState([]);
             const [marketItemInput, setMarketItemInput] = useState({ desc: '', qty: 1, price: '' });
             const [showMarketTypeConfirm, setShowMarketTypeConfirm] = useState(false);
 
+            // --- INICIALIZAÇÃO SEGURA E MIGRAÇÃO ---
             useEffect(() => {
-                if (navigator.storage && navigator.storage.persist) { navigator.storage.persist(); }
-                const id = getDeviceId();
-                setDeviceId(id);
-                const savedKey = localStorage.getItem('nexus_license_key');
-                if (savedKey && verifyUniqueKey(savedKey, id)) { setIsPremium(true); } else { localStorage.removeItem('nexus_license_key'); }
-                setIsChecking(false);
-                const lastBackup = localStorage.getItem('nexus_last_backup');
-                if (!lastBackup) { setBackupWarning(true); } else { const days = (new Date() - new Date(lastBackup)) / (1000 * 60 * 60 * 24); if (days > 7) setBackupWarning(true); }
+                const initApp = async () => {
+                    if (navigator.storage && navigator.storage.persist) { navigator.storage.persist(); }
+                    
+                    // Checa se já está instalado (Standalone)
+                    const isStandalone = window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone || document.referrer.includes('android-app://');
+                    setIsAppInstalled(isStandalone);
+
+                    // 1. Identidade
+                    const id = _0xSec.gId();
+                    setDeviceId(id);
+
+                    // 2. Migração LocalStorage -> IndexedDB (Executa uma vez)
+                    const oldData = localStorage.getItem('nexus_finances_transactions');
+                    if (oldData) {
+                        try {
+                            const parsed = JSON.parse(oldData);
+                            if (Array.isArray(parsed) && parsed.length > 0) {
+                                await IDBManager.bulkSave(parsed);
+                                localStorage.removeItem('nexus_finances_transactions'); // Limpa após migrar
+                                console.log("Dados migrados para IndexedDB");
+                            }
+                        } catch(e) { console.error("Erro na migração", e); }
+                    }
+
+                    // 3. Carregar Dados do IDB
+                    try {
+                        const data = await IDBManager.getAll();
+                        setTransactions(data);
+                    } catch(e) { console.error("Erro ao carregar DB", e); }
+
+                    // 4. Verificação de Licença
+                    const savedKey = localStorage.getItem('nexus_license_key');
+                    if (savedKey) {
+                        const check = _0xSec.vK(savedKey, id);
+                        if (check.valid) {
+                            setIsPremium(true);
+                            setExpirationDate(check.expires);
+                        } else {
+                            // Se expirou ou inválida
+                            setIsPremium(false);
+                            if (check.expired) alert("Sua licença expirou.");
+                        }
+                    }
+
+                    // 5. Verificação de Trial
+                    const trialStatus = _0xSec.cT();
+                    setTrialActive(trialStatus.active);
+                    setTrialRemaining(trialStatus.remaining);
+
+                    // 6. Verificar Backup
+                    const lastBackup = localStorage.getItem('nexus_last_backup');
+                    if (!lastBackup) { setBackupWarning(true); } else { const days = (new Date() - new Date(lastBackup)) / (1000 * 60 * 60 * 24); if (days > 7) setBackupWarning(true); }
+                    
+                    setIsChecking(false);
+                };
+
+                initApp();
+
+                // PWA Install Event
+                window.addEventListener('beforeinstallprompt', (e) => {
+                    e.preventDefault();
+                    setInstallPrompt(e);
+                });
+
+                // Timer para trial (atualiza UI se expirar enquanto aberto)
+                const timer = setInterval(() => {
+                    const status = _0xSec.cT();
+                    setTrialActive(status.active);
+                    if (!status.active && !localStorage.getItem('nexus_license_key')) {
+                        // Força re-render para bloquear
+                        setIsPremium(false); 
+                    }
+                }, 60000); // Checa a cada minuto
+
+                return () => clearInterval(timer);
             }, []);
 
-            useEffect(() => {
-                const saved = localStorage.getItem('nexus_finances_transactions');
-                if (saved) { try { setTransactions(JSON.parse(saved)); setSaveStatus('saved'); setTimeout(() => setSaveStatus('idle'), 2000); } catch (e) { console.error(e); } }
-            }, []);
+            // Bloqueio Global
+            const isLocked = !isPremium && !trialActive;
 
+            // Salvar no IDB quando transactions muda
             useEffect(() => {
-                setSaveStatus('saving');
-                localStorage.setItem('nexus_finances_transactions', JSON.stringify(transactions));
-                const timer = setTimeout(() => { setSaveStatus('saved'); setTimeout(() => setSaveStatus('idle'), 3000); }, 600);
-                return () => clearTimeout(timer);
-            }, [transactions]);
+                if (isChecking) return;
+                const saveData = async () => {
+                    setSaveStatus('saving');
+                    // Salva a transação mais recente ou sincroniza tudo se necessário.
+                    // Para simplificar e garantir integridade, usamos bulkSave aqui, mas o ideal seria salvar apenas o alterado.
+                    // Como é IDB, é rápido.
+                    await IDBManager.bulkSave(transactions);
+                    setTimeout(() => { setSaveStatus('saved'); setTimeout(() => setSaveStatus('idle'), 3000); }, 600);
+                };
+                // Debounce simples
+                const timeoutId = setTimeout(saveData, 500);
+                return () => clearTimeout(timeoutId);
+            }, [transactions, isChecking]);
 
-            // Atualiza o valor total da feira no formData quando os itens mudam
             useEffect(() => {
                 if (isMarketMode) {
                     const total = marketItems.reduce((acc, item) => acc + (item.price * item.qty), 0);
@@ -465,12 +704,37 @@
                 }
             }, [marketItems, isMarketMode]);
 
-            const unlockApp = (key) => { localStorage.setItem('nexus_license_key', key); setIsPremium(true); setShowPremiumModal(false); alert("Licença Premium Ativada!"); };
-            const logout = () => { if(confirm("Deseja desativar?")) { localStorage.removeItem('nexus_license_key'); setIsPremium(false); } };
-            const handleExportData = () => {
-                if (!isPremium) { setShowSettings(false); setShowPremiumModal(true); return; }
+            const unlockApp = (key) => { 
+                localStorage.setItem('nexus_license_key', key); 
+                const check = _0xSec.vK(key, deviceId);
+                setIsPremium(true); 
+                setExpirationDate(check.expires);
+                setShowPremiumModal(false); 
+                alert("Licença Premium Ativada!"); 
+            };
+            
+            const handleInstall = () => {
+                if (installPrompt) {
+                    installPrompt.prompt();
+                    installPrompt.userChoice.then((choiceResult) => {
+                        if (choiceResult.outcome === 'accepted') {
+                            setInstallPrompt(null);
+                        }
+                    });
+                } else {
+                    // Fallback para iOS ou navegadores que não suportam beforeinstallprompt
+                    setShowInstallModal(true);
+                }
+            };
+
+            const logout = () => { if(confirm("Deseja remover a licença deste dispositivo?")) { localStorage.removeItem('nexus_license_key'); setIsPremium(false); setExpirationDate(null); window.location.reload(); } };
+            
+            const handleExportData = async () => {
+                if (isLocked) { setShowSettings(false); setShowPremiumModal(true); return; }
                 const licenseKey = localStorage.getItem('nexus_license_key');
-                const backupData = { version: 2, license: { key: licenseKey, deviceId: deviceId }, data: transactions };
+                // Pega do IDB para garantir
+                const data = await IDBManager.getAll();
+                const backupData = { version: 3, license: { key: licenseKey, deviceId: deviceId }, data: data };
                 const blob = new Blob([JSON.stringify(backupData, null, 2)], { type: "application/json" });
                 const url = URL.createObjectURL(blob);
                 const link = document.createElement('a');
@@ -482,7 +746,8 @@
                 localStorage.setItem('nexus_last_backup', new Date().toISOString());
                 setBackupWarning(false);
             };
-            const handleImportClick = () => { if (!isPremium) { setShowSettings(false); setShowPremiumModal(true); return; } fileInputRef.current.click(); }
+
+            const handleImportClick = () => { if (isLocked) { setShowSettings(false); setShowPremiumModal(true); return; } fileInputRef.current.click(); }
             const handleFileUpload = (e) => {
                 const file = e.target.files[0];
                 if (!file) return;
@@ -493,10 +758,12 @@
                 reader.readAsText(file);
                 e.target.value = null;
             };
-            const confirmImport = () => {
+            
+            const confirmImport = async () => {
                 if (pendingImportData) {
                     setTransactions(pendingImportData.data);
-                    if (pendingImportData.license && verifyUniqueKey(pendingImportData.license.key, deviceId)) { localStorage.setItem('nexus_license_key', pendingImportData.license.key); setIsPremium(true); }
+                    await IDBManager.bulkSave(pendingImportData.data);
+                    if (pendingImportData.license && _0xSec.vK(pendingImportData.license.key, deviceId).valid) { localStorage.setItem('nexus_license_key', pendingImportData.license.key); setIsPremium(true); }
                     setPendingImportData(null); setShowSettings(false); alert('Dados restaurados!');
                 }
             };
@@ -518,11 +785,9 @@
             };
 
             const confirmMarketSave = (type) => {
-                // Formata os itens da feira para o campo de detalhes
                 let itemsDesc = marketItems.map(i => `${i.qty}x ${i.desc} (${new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(i.price)})`).join('\n');
                 let finalDesc = formData.additionalInfo ? formData.additionalInfo + '\n\n' + itemsDesc : itemsDesc;
                 
-                // Atualiza o formData com o tipo escolhido e salva
                 const finalData = {
                     ...formData,
                     type: type,
@@ -533,7 +798,6 @@
                 if (editingId) { setTransactions(transactions.map(t => t.id === editingId ? { ...t, ...finalData } : t)); } 
                 else { setTransactions([{ id: Date.now().toString(), ...finalData, createdAt: new Date().toISOString() }, ...transactions]); }
                 
-                // Limpeza
                 setFormData({ description: '', amount: '', type: 'expense', date: new Date().toISOString().split('T')[0], method: '', beneficiary: 'eu', category: '', additionalInfo: '' });
                 setEditingId(null); 
                 setShowModal(false);
@@ -543,15 +807,14 @@
             const handleSaveTransaction = (e) => {
                 e.preventDefault();
                 if (!formData.description || !formData.amount) return;
-                if (!editingId && !isPremium && transactions.length >= FREE_LIMIT) { setShowModal(false); setShowPremiumModal(true); return; }
+                // Verificação de bloqueio
+                if (isLocked) { setShowModal(false); setShowPremiumModal(true); return; }
                 
-                // Lógica Especial para Feira
                 if (isMarketMode && marketItems.length > 0) {
                     setShowMarketTypeConfirm(true);
                     return;
                 }
 
-                // Salvamento Padrão
                 if (editingId) { setTransactions(transactions.map(t => t.id === editingId ? { ...t, ...formData, amount: parseFloat(formData.amount) } : t)); } 
                 else { setTransactions([{ id: Date.now().toString(), ...formData, amount: parseFloat(formData.amount), createdAt: new Date().toISOString() }, ...transactions]); }
                 setFormData({ description: '', amount: '', type: 'expense', date: new Date().toISOString().split('T')[0], method: '', beneficiary: 'eu', category: '', additionalInfo: '' });
@@ -559,9 +822,8 @@
             };
 
             const handleOpenModal = (t = null) => {
-                if (!t && !isPremium && transactions.length >= FREE_LIMIT) { setShowPremiumModal(true); return; }
+                if (isLocked) { setShowPremiumModal(true); return; }
                 
-                // Reset Market Mode
                 setIsMarketMode(false);
                 setMarketItems([]);
                 setMarketItemInput({ desc: '', qty: 1, price: '' });
@@ -581,9 +843,9 @@
                     }
                     if (viewType === 'weekly') {
                         const startOfWeek = new Date(refDate);
-                        startOfWeek.setDate(refDate.getDate() - refDate.getDay()); // Sunday
+                        startOfWeek.setDate(refDate.getDate() - refDate.getDay()); 
                         const endOfWeek = new Date(startOfWeek);
-                        endOfWeek.setDate(startOfWeek.getDate() + 6); // Saturday
+                        endOfWeek.setDate(startOfWeek.getDate() + 6); 
                         return tDate >= startOfWeek && tDate <= endOfWeek;
                     }
                     if (viewType === 'monthly') {
@@ -596,7 +858,6 @@
                 }).sort((a,b) => new Date(b.date) - new Date(a.date));
             }, [transactions, viewType, referenceDate]);
 
-            // Separação de incomes/expenses para os cards
             const currentFilteredData = useMemo(() => {
                 return {
                     incomes: filteredTransactions.filter(t => t.type === 'income'),
@@ -619,6 +880,11 @@
 
             if (isChecking) return <div className="min-h-screen bg-slate-900 flex items-center justify-center text-white"><Icons.Wallet className="animate-bounce" size={40} /></div>;
 
+            // Bloqueia a UI se estiver expirado
+            if (isLocked) {
+                return <PremiumModal onActivate={unlockApp} deviceId={deviceId} onClose={() => {}} />;
+            }
+
             return (
                 <div className="bg-slate-50 pb-20 md:pb-0 animate-fadeIn text-slate-800 min-h-full">
                     <header className="bg-slate-900 text-white p-6 pb-24 rounded-b-[2.5rem] md:rounded-t-3xl md:rounded-b-[2.5rem] shadow-xl relative overflow-hidden">
@@ -629,17 +895,26 @@
                         </div>
 
                         <div className="absolute top-4 right-4 z-50 flex gap-2">
-                             {!isPremium && <button onClick={() => setShowPremiumModal(true)} className="px-3 py-1.5 rounded-full bg-amber-500 hover:bg-amber-600 text-white text-xs font-bold shadow-lg flex items-center gap-1 animate-pulse-soft"><Icons.Crown size={14}/> <span>{transactions.length}/{FREE_LIMIT}</span></button>}
+                             {/* Botão de Instalação: Aparece SE não estiver instalado (PWA) */}
+                             {!isAppInstalled && (
+                                <button onClick={handleInstall} className="px-3 py-1.5 rounded-full bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold shadow-lg flex items-center gap-1 animate-pulse-soft">
+                                    <Icons.Download size={14}/> <span>Instalar App</span>
+                                </button>
+                             )}
+                             {!isPremium && trialActive && (
+                                <button onClick={() => setShowPremiumModal(true)} className="px-3 py-1.5 rounded-full bg-amber-500 hover:bg-amber-600 text-white text-xs font-bold shadow-lg flex items-center gap-1 animate-pulse-soft">
+                                    <Icons.Crown size={14}/> <span>Teste Grátis ({Math.ceil(trialRemaining/60000)}min)</span>
+                                </button>
+                             )}
                             <button onClick={() => setShowSettings(true)} className={`p-2.5 rounded-full hover:bg-slate-700 transition-colors shadow-lg border flex items-center justify-center ${backupWarning ? 'bg-rose-500 border-rose-400 text-white animate-pulse-red' : 'bg-slate-800 text-slate-300 border-slate-700'}`}>{backupWarning ? <Icons.AlertOctagon size={20} /> : <Icons.Settings size={20} />}</button>
                         </div>
                         <div className="relative z-10 pt-2 text-center">
-                            {/* LOGO ADICIONADA AQUI - Aumentada para w-56 h-56 (Dobro do anterior) */}
                             <img src="image_c76661.jpg" alt="Logo Nexus" className="w-56 h-56 mx-auto mb-6 rounded-[2.5rem] shadow-2xl border-4 border-slate-700/50 object-cover" onError={(e) => e.target.style.display='none'} />
                             
                             <h1 className="text-3xl font-bold tracking-tight">Nexus</h1>
                             <p className="text-emerald-400 text-xs font-bold uppercase tracking-widest bg-slate-800/50 px-2 py-1 rounded-full mt-1">Controle de Finanças</p>
                             <p className="text-[10px] text-slate-400 mt-2 font-medium">Aplicativo desenvolvido por Lucas Sebastião Barbosa Silva</p>
-                            <div className={`mt-2 flex items-center justify-center gap-1 text-[10px] font-medium transition-all duration-300 ${saveStatus === 'saved' ? 'opacity-100' : 'opacity-0'}`}><Icons.CheckCircle2 size={12} className="text-emerald-400" /><span className="text-emerald-100">Salvo no dispositivo</span></div>
+                            <div className={`mt-2 flex items-center justify-center gap-1 text-[10px] font-medium transition-all duration-300 ${saveStatus === 'saved' ? 'opacity-100' : 'opacity-0'}`}><Icons.CheckCircle2 size={12} className="text-emerald-400" /><span className="text-emerald-100">Salvo no dispositivo (Database)</span></div>
                             <div className="mt-4"><span className="text-slate-400 text-sm font-medium uppercase tracking-wider">Saldo Atual</span><div className={`text-4xl font-bold mt-1 ${balance >= 0 ? 'text-white' : 'text-rose-400'}`}>{new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(balance)}</div></div>
                         </div>
                         <div className="absolute bottom-2 left-0 w-full text-center"><p className="text-[9px] text-slate-500/80 flex items-center justify-center gap-1"><Icons.ShieldCheck size={10} /> 100% Privado & Seguro (LGPD)</p></div>
@@ -647,7 +922,6 @@
 
                     <main className="px-4 -mt-16 relative z-20 max-w-6xl mx-auto space-y-4">
                         
-                        {/* Novo Painel de Controle de Filtros e Relatório */}
                         <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-100 md:max-w-md md:mx-auto flex flex-col gap-3">
                             <div className="flex gap-2">
                                 <select 
@@ -709,7 +983,6 @@
                         <div className="h-20 md:hidden"></div>
                     </main>
 
-                    {/* Barra Inferior (Visível APENAS no Mobile) */}
                     <nav className="fixed bottom-0 w-full bg-white border-t border-gray-100 pb-2 z-30 shadow-[0_-5px_15px_rgba(0,0,0,0.02)] md:hidden">
                         <div className="flex justify-center items-end max-w-lg mx-auto px-8 h-16">
                             <div className="relative -top-5">
@@ -735,7 +1008,6 @@
                                         </div>
                                     )}
 
-                                    {/* Botão de Toggle para o Modo Feira */}
                                     <div className="flex items-center justify-between bg-slate-50 p-3 rounded-xl border border-slate-100">
                                         <div className="flex items-center gap-2">
                                             <div className={`p-2 rounded-lg ${isMarketMode ? 'bg-orange-100 text-orange-600' : 'bg-slate-200 text-slate-500'}`}>
@@ -755,7 +1027,6 @@
                                         </button>
                                     </div>
 
-                                    {/* MODO FEIRA ATIVO */}
                                     {isMarketMode && (
                                         <div className="bg-orange-50 border border-orange-100 rounded-xl p-4 animate-scaleIn">
                                             <div className="flex gap-2 mb-2">
@@ -776,7 +1047,6 @@
                                                 <button type="button" onClick={addMarketItem} className="h-[38px] px-4 bg-orange-500 hover:bg-orange-600 text-white rounded-lg font-bold text-xs shadow-sm flex items-center gap-1"><Icons.Plus size={16}/> Adicionar</button>
                                             </div>
                                             
-                                            {/* Lista de Itens */}
                                             {marketItems.length > 0 && (
                                                 <div className="bg-white rounded-lg border border-orange-200 overflow-hidden mb-3">
                                                     <div className="max-h-32 overflow-y-auto divide-y divide-orange-100">
@@ -872,7 +1142,6 @@
                         </div>
                     )}
 
-                    {/* Modal de Confirmação de Tipo (Feira) */}
                     {showMarketTypeConfirm && (
                         <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[60] flex items-center justify-center p-4 animate-fadeIn text-slate-800">
                             <div className="bg-white rounded-2xl p-6 shadow-2xl max-w-sm w-full text-center animate-scaleIn">
@@ -897,10 +1166,43 @@
                     )}
 
                     {showReport && (<ReportModal transactions={filteredTransactions} periodLabel={getPeriodLabel()} onClose={() => setShowReport(false)} />)}
-                    {showSettings && (<div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[60] flex items-center justify-center p-4 animate-fadeIn text-slate-800"><div className="bg-white rounded-2xl p-6 shadow-2xl max-w-sm w-full animate-scaleIn overflow-y-auto max-h-[90vh]"><div className="flex justify-between items-center mb-4"><h3 className="text-lg font-bold text-slate-800">Configurações</h3><button onClick={() => setShowSettings(false)} className="p-2 bg-gray-100 rounded-full"><Icons.X size={20}/></button></div><div className="bg-emerald-50 p-4 rounded-xl border border-emerald-100 mb-4"><p className="text-xs font-bold text-emerald-800 uppercase mb-1">{isPremium ? 'Licença Ativa (Device Locked)' : 'Versão Gratuita'}</p><div className="flex items-center gap-2 text-sm text-emerald-700 font-mono"><Icons.Smartphone size={16}/> <span>{deviceId}</span></div></div>{backupWarning && <div className="mb-4 p-3 bg-amber-50 border border-amber-200 rounded-xl flex items-center gap-3 animate-fadeIn"><div className="text-amber-600"><Icons.AlertOctagon size={24}/></div><div><p className="text-xs font-bold text-amber-700">Backup Recomendado</p><p className="text-[10px] text-amber-600">Seus dados ficam salvos neste navegador. Faça um backup.</p></div></div>}<div className="space-y-2"><button onClick={handleExportData} className="w-full p-3 border rounded-xl flex items-center gap-3 hover:bg-slate-50"><Icons.Download className="text-emerald-600"/> <span>Baixar Backup Completo</span> {!isPremium && <Icons.Lock size={14} className="ml-auto text-slate-300"/>}</button><button onClick={handleImportClick} className="w-full p-3 border rounded-xl flex items-center gap-3 hover:bg-slate-50"><Icons.Upload className="text-blue-600"/> <span>Restaurar Backup</span> {!isPremium && <Icons.Lock size={14} className="ml-auto text-slate-300"/>}</button>{isPremium && <button onClick={logout} className="w-full p-3 border border-rose-200 bg-rose-50 rounded-xl flex items-center gap-3 hover:bg-rose-100 mt-4 text-rose-700 font-bold"><Icons.LogOut className="text-rose-600"/> <span>Desativar Licença</span></button>}<input type="file" ref={fileInputRef} onChange={handleFileUpload} accept=".json" className="hidden" /></div></div></div>)}
+                    
+                    {showSettings && (
+                        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[60] flex items-center justify-center p-4 animate-fadeIn text-slate-800">
+                            <div className="bg-white rounded-2xl p-6 shadow-2xl max-w-sm w-full animate-scaleIn overflow-y-auto max-h-[90vh]">
+                                <div className="flex justify-between items-center mb-4"><h3 className="text-lg font-bold text-slate-800">Configurações</h3><button onClick={() => setShowSettings(false)} className="p-2 bg-gray-100 rounded-full"><Icons.X size={20}/></button></div>
+                                
+                                <div className={`p-4 rounded-xl border mb-4 ${isPremium ? 'bg-emerald-50 border-emerald-100' : 'bg-amber-50 border-amber-200'}`}>
+                                    <p className={`text-xs font-bold uppercase mb-1 ${isPremium ? 'text-emerald-800' : 'text-amber-800'}`}>
+                                        {isPremium ? 'Licença Ativa' : 'Versão de Teste'}
+                                    </p>
+                                    <div className={`flex items-center gap-2 text-sm font-mono ${isPremium ? 'text-emerald-700' : 'text-amber-700'}`}>
+                                        <Icons.Smartphone size={16}/> <span>{deviceId}</span>
+                                    </div>
+                                    {expirationDate && (
+                                        <p className="text-[10px] mt-2 text-emerald-600 font-bold">Válido até: {new Date(expirationDate).toLocaleDateString('pt-BR')}</p>
+                                    )}
+                                    {!isPremium && trialActive && (
+                                        <p className="text-[10px] mt-2 text-amber-600 font-bold">Restam {Math.ceil(trialRemaining/60000)} minutos</p>
+                                    )}
+                                </div>
+                                
+                                {backupWarning && <div className="mb-4 p-3 bg-amber-50 border border-amber-200 rounded-xl flex items-center gap-3 animate-fadeIn"><div className="text-amber-600"><Icons.AlertOctagon size={24}/></div><div><p className="text-xs font-bold text-amber-700">Backup Recomendado</p><p className="text-[10px] text-amber-600">Seus dados ficam salvos neste navegador. Faça um backup.</p></div></div>}
+                                
+                                <div className="space-y-2">
+                                    <button onClick={handleExportData} className="w-full p-3 border rounded-xl flex items-center gap-3 hover:bg-slate-50"><Icons.Download className="text-emerald-600"/> <span>Baixar Backup Completo</span> {!isPremium && !trialActive && <Icons.Lock size={14} className="ml-auto text-slate-300"/>}</button>
+                                    <button onClick={handleImportClick} className="w-full p-3 border rounded-xl flex items-center gap-3 hover:bg-slate-50"><Icons.Upload className="text-blue-600"/> <span>Restaurar Backup</span> {!isPremium && !trialActive && <Icons.Lock size={14} className="ml-auto text-slate-300"/>}</button>
+                                    {isPremium && <button onClick={logout} className="w-full p-3 border border-rose-200 bg-rose-50 rounded-xl flex items-center gap-3 hover:bg-rose-100 mt-4 text-rose-700 font-bold"><Icons.LogOut className="text-rose-600"/> <span>Desativar Licença</span></button>}
+                                    <input type="file" ref={fileInputRef} onChange={handleFileUpload} accept=".json" className="hidden" />
+                                </div>
+                            </div>
+                        </div>
+                    )}
+                    
                     {showPremiumModal && (<PremiumModal onActivate={unlockApp} deviceId={deviceId} onClose={() => setShowPremiumModal(false)} />)}
+                    {showInstallModal && <InstallModal onClose={() => setShowInstallModal(false)} />}
                     {pendingImportData && (<div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[70] flex items-center justify-center p-4 text-slate-800"><div className="bg-white rounded-2xl p-6 text-center shadow-2xl"><h3 className="text-lg font-bold mb-2">Confirmar Importação?</h3><p className="text-sm text-slate-500 mb-4">Isso substituirá todos os dados.</p><div className="flex gap-2"><button onClick={() => setPendingImportData(null)} className="flex-1 py-2 bg-slate-100 rounded">Cancelar</button><button onClick={confirmImport} className="flex-1 py-2 bg-blue-600 text-white rounded">Confirmar</button></div></div></div>)}
-                    {itemToDelete && (<div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[70] flex items-center justify-center p-4 text-slate-800"><div className="bg-white rounded-2xl p-6 text-center shadow-2xl"><h3 className="text-lg font-bold mb-2">Excluir?</h3><div className="flex gap-2"><button onClick={() => setItemToDelete(null)} className="flex-1 py-2 bg-slate-100 rounded">Cancelar</button><button onClick={() => { setTransactions(transactions.filter(t => t.id !== itemToDelete)); setItemToDelete(null); }} className="flex-1 py-2 bg-rose-500 text-white rounded">Excluir</button></div></div></div>)}
+                    {itemToDelete && (<div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[70] flex items-center justify-center p-4 text-slate-800"><div className="bg-white rounded-2xl p-6 text-center shadow-2xl"><h3 className="text-lg font-bold mb-2">Excluir?</h3><div className="flex gap-2"><button onClick={() => setItemToDelete(null)} className="flex-1 py-2 bg-slate-100 rounded">Cancelar</button><button onClick={async () => { const newData = transactions.filter(t => t.id !== itemToDelete); setTransactions(newData); await IDBManager.delete(itemToDelete); setItemToDelete(null); }} className="flex-1 py-2 bg-rose-500 text-white rounded">Excluir</button></div></div></div>)}
                 </div>
             );
         }
@@ -908,20 +1210,15 @@
         const root = ReactDOM.createRoot(document.getElementById('root'));
         root.render(<App />);
 
-        // --- REGISTRO DO SERVICE WORKER (CORRIGIDO) ---
         if ('serviceWorker' in navigator) {
             window.addEventListener('load', () => {
-                // Adicionada verificação para evitar erro em ambiente de preview/local
                 if (window.location.protocol.startsWith('http')) {
                     navigator.serviceWorker.register('./sw.js')
-                        .then(reg => console.log('[PWA] SW Registrado:', reg.scope))
+                        .then(reg => console.log('[PWA] SW Registrado'))
                         .catch(err => console.error('[PWA] Falha no SW:', err));
-                } else {
-                    console.log('[PWA] Registro de SW pulado: Requer protocolo HTTP/HTTPS (atual: ' + window.location.protocol + ')');
                 }
             });
         }
     </script>
 </body>
 </html>
-
